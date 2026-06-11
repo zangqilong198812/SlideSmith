@@ -1,0 +1,95 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg:         #f5f5f5;
+  --surface:    #f9f9f9;
+  --card:       #ffffff;
+  --raised:     #ebebeb;
+  --ink:        #0a0a0a;
+  --ink-2:      #1c1c1c;
+  --ink-3:      #555555;
+  --ink-4:      #777777;
+  --ink-5:      #888888;
+  --ink-6:      #999999;
+  --ink-7:      #aaaaaa;
+  --ink-8:      #bbbbbb;
+  --ink-hover:  #222222;
+  --line:       #e5e5e5;
+  --line-2:     #d0d0d0;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  -webkit-appearance: none;
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:focus {
+  outline: none;
+}
+
+html {
+  height: 100%;
+  height: 100dvh;
+}
+
+body,
+#root {
+  height: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-color: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-7);
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--raised) 25%, var(--line) 50%, var(--raised) 75%);
+  background-size: 200% auto;
+  animation: shimmer 1.8s linear infinite;
+}
