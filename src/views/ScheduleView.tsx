@@ -3,6 +3,8 @@ import { Loader2, FileEdit, CheckCircle2, Clock, RefreshCw } from 'lucide-react'
 import type { ScheduledPost } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { getScheduledPosts } from '../lib/api';
+import { ImageLightbox } from '../components/Lightbox';
+import { useT } from '../i18n';
 
 interface ScheduleViewProps {
   configured: boolean;
@@ -37,9 +39,11 @@ const statusMeta: Record<string, { icon: typeof Clock; className: string; label:
 };
 
 export function ScheduleView({ configured }: ScheduleViewProps) {
+  const t = useT();
   const [posts, setPosts] = useState<ScheduledPost[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [preview, setPreview] = useState<{ images: string[]; index: number } | null>(null);
 
   const load = useCallback(async () => {
     if (!configured) return;
@@ -72,8 +76,8 @@ export function ScheduleView({ configured }: ScheduleViewProps) {
   return (
     <>
       <ViewHeader
-        title="Schedule"
-        subtitle="Posts queued in post-bridge — it publishes them to your connected accounts at the scheduled time."
+        title={t('Schedule', '排程')}
+        subtitle={t('Posts queued in post-bridge — it publishes them to your connected accounts at the scheduled time.', '已进入 post-bridge 队列的内容，会在设定时间发布。')}
         right={
           configured && (
             <button
@@ -82,7 +86,7 @@ export function ScheduleView({ configured }: ScheduleViewProps) {
               className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-line text-[12px] text-ink-4 hover:text-ink hover:border-line-2 disabled:opacity-50"
             >
               <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-              Refresh
+              {t('Refresh', '刷新')}
             </button>
           )
         }
@@ -90,13 +94,13 @@ export function ScheduleView({ configured }: ScheduleViewProps) {
       <div className="flex-1 overflow-y-auto p-8">
         <div className="max-w-3xl mx-auto space-y-6">
           {!configured ? (
-            <Empty text="Add your post-bridge API key in Settings to see your scheduled posts." />
+            <Empty text={t('Add your post-bridge API key in Settings to see your scheduled posts.', '在设置里添加 post-bridge API Key 后查看排程。')} />
           ) : error ? (
             <Empty text={error} />
           ) : posts === null ? (
             <Loading />
           ) : posts.length === 0 ? (
-            <Empty text="Nothing scheduled yet. Approve a slideshow from the Queue to send it here." />
+            <Empty text={t('Nothing scheduled yet. Approve a slideshow from the Queue to send it here.', '还没有排程内容。在队列里发送内容后会显示在这里。')} />
           ) : (
             grouped.map(([day, items]) => (
               <div key={day}>
@@ -110,7 +114,11 @@ export function ScheduleView({ configured }: ScheduleViewProps) {
                 </div>
                 <div className="flex flex-col gap-2">
                   {items.map((p) => (
-                    <ScheduledRow key={p.id} post={p} />
+                    <ScheduledRow
+                      key={p.id}
+                      post={p}
+                      onPreview={(index) => setPreview({ images: p.mediaUrls, index })}
+                    />
                   ))}
                 </div>
               </div>
@@ -118,11 +126,19 @@ export function ScheduleView({ configured }: ScheduleViewProps) {
           )}
         </div>
       </div>
+      {preview && (
+        <ImageLightbox
+          images={preview.images}
+          index={preview.index}
+          onIndex={(index) => setPreview((current) => current ? { ...current, index } : current)}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </>
   );
 }
 
-function ScheduledRow({ post }: { post: ScheduledPost }) {
+function ScheduledRow({ post, onPreview }: { post: ScheduledPost; onPreview: (index: number) => void }) {
   const meta = statusMeta[post.status] || statusMeta.scheduled;
   const Icon = meta.icon;
   return (
@@ -136,9 +152,9 @@ function ScheduledRow({ post }: { post: ScheduledPost }) {
       </div>
       <div className="flex gap-1 shrink-0">
         {post.mediaUrls.slice(0, 4).map((url, i) => (
-          <div key={i} className="w-9 aspect-[9/16] rounded-md overflow-hidden bg-raised">
+          <button key={i} onClick={() => onPreview(i)} className="w-9 aspect-[9/16] rounded-md overflow-hidden bg-raised cursor-zoom-in">
             <img src={url} alt="" className="w-full h-full object-cover" />
-          </div>
+          </button>
         ))}
       </div>
       <div className="flex-1 min-w-0">

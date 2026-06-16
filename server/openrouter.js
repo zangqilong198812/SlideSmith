@@ -1,6 +1,6 @@
-// OpenRouter client. OpenRouter is an OpenAI-compatible gateway to hundreds of
-// models behind a single key, with a public models list we surface as a dropdown.
-const BASE = 'https://openrouter.ai/api/v1'
+// OpenAI-compatible AI client. OpenRouter is still the default, but users can
+// point this at DeepSeek or another compatible /chat/completions endpoint.
+const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
 
 // Recommended (optional) attribution headers for OpenRouter.
 const ATTRIBUTION = {
@@ -10,7 +10,7 @@ const ATTRIBUTION = {
 
 // Public — no key required. Returns the full catalog so the UI can list models.
 export async function listModels() {
-  const res = await fetch(`${BASE}/models`)
+  const res = await fetch(`${OPENROUTER_BASE}/models`)
   if (!res.ok) throw new Error(`OpenRouter models ${res.status}`)
   const body = await res.json()
   return (body?.data || [])
@@ -18,13 +18,28 @@ export async function listModels() {
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
-// Validate a key cheaply via the key-info endpoint (no token spend).
-export async function validateKey(apiKey) {
-  if (!apiKey) throw new Error('Missing OpenRouter API key. Add it in Settings.')
-  const res = await fetch(`${BASE}/key`, {
+function normalizeBaseUrl(baseUrl) {
+  return String(baseUrl || OPENROUTER_BASE).replace(/\/+$/, '')
+}
+
+function providerName(baseUrl) {
+  const base = normalizeBaseUrl(baseUrl)
+  if (base.includes('openrouter.ai')) return 'OpenRouter'
+  if (base.includes('deepseek.com')) return 'DeepSeek'
+  return 'AI provider'
+}
+
+// Validate a key. OpenRouter has a no-spend /key endpoint; other compatible
+// providers usually expose /models, which is still cheaper than a completion.
+export async function validateKey(apiKey, baseUrl) {
+  if (!apiKey) throw new Error('Missing AI API key. Add it in Settings.')
+  const base = normalizeBaseUrl(baseUrl)
+  const name = providerName(base)
+  const path = base.includes('openrouter.ai') ? '/key' : '/models'
+  const res = await fetch(`${base}${path}`, {
     headers: { Authorization: `Bearer ${apiKey}` },
   })
-  if (!res.ok) throw new Error(`OpenRouter ${res.status}: invalid key`)
+  if (!res.ok) throw new Error(`${name} ${res.status}: invalid key or base URL`)
   return true
 }
 
@@ -39,11 +54,13 @@ function extractJson(text) {
 }
 
 // One chat completion that must return a JSON object.
-export async function chatJSON({ apiKey, model, prompt }) {
-  if (!apiKey) throw new Error('Missing OpenRouter API key. Add it in Settings.')
+export async function chatJSON({ apiKey, baseUrl, model, prompt }) {
+  if (!apiKey) throw new Error('Missing AI API key. Add it in Settings.')
   if (!model) throw new Error('No model selected. Pick one in Settings.')
 
-  const res = await fetch(`${BASE}/chat/completions`, {
+  const base = normalizeBaseUrl(baseUrl)
+  const name = providerName(base)
+  const res = await fetch(`${base}/chat/completions`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -60,9 +77,9 @@ export async function chatJSON({ apiKey, model, prompt }) {
 
   const body = await res.json().catch(() => null)
   if (!res.ok) {
-    throw new Error(`OpenRouter ${res.status}: ${body?.error?.message || res.statusText}`)
+    throw new Error(`${name} ${res.status}: ${body?.error?.message || res.statusText}`)
   }
   const content = body?.choices?.[0]?.message?.content
-  if (!content) throw new Error('OpenRouter returned no content.')
+  if (!content) throw new Error(`${name} returned no content.`)
   return extractJson(content)
 }

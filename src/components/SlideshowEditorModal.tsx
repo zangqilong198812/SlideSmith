@@ -4,6 +4,8 @@ import type { Slideshow, Slide, LibraryImage } from '../types';
 import { Button } from './Button';
 import { SlidePreview } from './SlidePreview';
 import { getLibrary } from '../lib/api';
+import { SlideLightbox } from './Lightbox';
+import { useT } from '../i18n';
 
 interface SlideshowEditorModalProps {
   slideshow: Slideshow;
@@ -14,6 +16,7 @@ interface SlideshowEditorModalProps {
 type Tab = 'post' | 'slide';
 
 export function SlideshowEditorModal({ slideshow, onClose, onSave }: SlideshowEditorModalProps) {
+  const t = useT();
   const [slides, setSlides] = useState<Slide[]>(slideshow.slides.map((s) => ({ ...s })));
   const [caption, setCaption] = useState(slideshow.caption);
   const [hashtags, setHashtags] = useState(slideshow.hashtags.join(' '));
@@ -22,6 +25,7 @@ export function SlideshowEditorModal({ slideshow, onClose, onSave }: SlideshowEd
   const [library, setLibrary] = useState<LibraryImage[] | null>(null);
   const [pack, setPack] = useState('all');
   const [saving, setSaving] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
   useEffect(() => {
     getLibrary().then(setLibrary).catch(() => setLibrary([]));
@@ -76,7 +80,7 @@ export function SlideshowEditorModal({ slideshow, onClose, onSave }: SlideshowEd
         {/* Preview */}
         <div className="sm:flex-1 bg-surface flex flex-col items-center justify-center p-6 gap-3 min-w-0">
           <div className="w-[200px] max-w-full">
-            <SlidePreview slide={current} />
+            <SlidePreview slide={current} onClick={() => setPreviewIndex(index)} />
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -111,15 +115,15 @@ export function SlideshowEditorModal({ slideshow, onClose, onSave }: SlideshowEd
         <div className="w-full sm:w-96 flex flex-col border-t sm:border-t-0 sm:border-l border-line min-h-0">
           <div className="flex items-center justify-between px-4 py-3 border-b border-line">
             <div className="flex gap-1">
-              {(['post', 'slide'] as const).map((t) => (
+              {(['post', 'slide'] as const).map((tabKey) => (
                 <button
-                  key={t}
-                  onClick={() => setTab(t)}
+                  key={tabKey}
+                  onClick={() => setTab(tabKey)}
                   className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors ${
-                    tab === t ? 'bg-raised text-ink' : 'text-ink-5 hover:text-ink-3'
+                    tab === tabKey ? 'bg-raised text-ink' : 'text-ink-5 hover:text-ink-3'
                   }`}
                 >
-                  {t === 'post' ? 'Post' : `Slide ${index + 1}`}
+                  {tabKey === 'post' ? t('Post', '帖子') : t(`Slide ${index + 1}`, `第 ${index + 1} 页`)}
                 </button>
               ))}
             </div>
@@ -132,14 +136,14 @@ export function SlideshowEditorModal({ slideshow, onClose, onSave }: SlideshowEd
             {tab === 'post' ? (
               <>
                 <div>
-                  <label className="text-[11px] text-ink-6 uppercase tracking-widest font-semibold mb-1.5 block">Caption</label>
+                  <label className="text-[11px] text-ink-6 uppercase tracking-widest font-semibold mb-1.5 block">{t('Caption', 'Caption 文案')}</label>
                   <textarea
                     value={caption}
                     onChange={(e) => setCaption(e.target.value)}
                     rows={5}
                     className="w-full bg-card border border-line rounded-lg px-3 py-2 text-[13px] text-ink resize-none outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10"
                   />
-                  <span className="text-[10px] text-ink-6">{caption.length} chars</span>
+                  <span className="text-[10px] text-ink-6">{t(`${caption.length} chars`, `${caption.length} 字符`)}</span>
                 </div>
                 <div>
                   <label className="text-[11px] text-ink-6 uppercase tracking-widest font-semibold mb-1.5 block">Hashtags</label>
@@ -149,17 +153,17 @@ export function SlideshowEditorModal({ slideshow, onClose, onSave }: SlideshowEd
                     placeholder="finance budgeting money"
                     className="w-full h-9 bg-card border border-line rounded-lg px-3 text-[13px] text-ink outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10"
                   />
-                  <span className="text-[10px] text-ink-6">Space or comma separated, no # needed.</span>
+                  <span className="text-[10px] text-ink-6">{t('Space or comma separated, no # needed.', '用空格或逗号分隔，不需要写 #。')}</span>
                 </div>
               </>
             ) : (
               <>
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-[11px] text-ink-6 uppercase tracking-widest font-semibold">Slide {index + 1} text</label>
+                    <label className="text-[11px] text-ink-6 uppercase tracking-widest font-semibold">{t(`Slide ${index + 1} text`, `第 ${index + 1} 页文字`)}</label>
                     {total > 1 && (
                       <button onClick={deleteSlide} className="text-[10px] text-ink-6 hover:text-red-600 flex items-center gap-1">
-                        <Trash2 size={11} /> Delete slide
+                        <Trash2 size={11} /> {t('Delete slide', '删除这一页')}
                       </button>
                     )}
                   </div>
@@ -173,7 +177,7 @@ export function SlideshowEditorModal({ slideshow, onClose, onSave }: SlideshowEd
 
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-[11px] text-ink-6 uppercase tracking-widest font-semibold">Background</label>
+                    <label className="text-[11px] text-ink-6 uppercase tracking-widest font-semibold">{t('Background', '背景')}</label>
                     <div className="flex items-center gap-2">
                       <select
                         value={pack}
@@ -181,22 +185,22 @@ export function SlideshowEditorModal({ slideshow, onClose, onSave }: SlideshowEd
                         className="h-7 bg-card border border-line rounded-md px-1.5 text-[11px] text-ink outline-none"
                       >
                         {packs.map((p) => (
-                          <option key={p} value={p}>{p === 'all' ? 'All packs' : p}</option>
+                          <option key={p} value={p}>{p === 'all' ? t('All packs', '全部素材包') : p}</option>
                         ))}
                       </select>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mb-2">
                     <Button variant="ghost" size="sm" icon={<ImageIcon size={12} />} onClick={() => patchSlide({ imageUrl: undefined })}>
-                      Gradient
+                      {t('Gradient', '渐变')}
                     </Button>
                     <Button variant="ghost" size="sm" icon={<Shuffle size={12} />} onClick={shuffleBackgrounds}>
-                      Shuffle all
+                      {t('Shuffle all', '全部随机')}
                     </Button>
                   </div>
                   {library === null ? (
                     <div className="flex items-center justify-center py-6 text-ink-5 text-[12px] gap-2">
-                      <Loader2 size={13} className="animate-spin" /> Loading…
+                      <Loader2 size={13} className="animate-spin" /> {t('Loading…', '加载中…')}
                     </div>
                   ) : (
                     <div className="grid grid-cols-4 gap-1.5 max-h-64 overflow-y-auto">
@@ -219,18 +223,29 @@ export function SlideshowEditorModal({ slideshow, onClose, onSave }: SlideshowEd
           </div>
 
           <div className="px-4 py-3 border-t border-line flex justify-end gap-2">
-            <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+            <Button variant="secondary" onClick={onClose} disabled={saving}>{t('Cancel', '取消')}</Button>
             <Button
               variant="primary"
               icon={saving ? <Loader2 size={13} className="animate-spin" /> : undefined}
               onClick={save}
               disabled={saving}
             >
-              {saving ? 'Saving…' : 'Save'}
+              {saving ? t('Saving…', '保存中…') : t('Save', '保存')}
             </Button>
           </div>
         </div>
       </div>
+      {previewIndex !== null && (
+        <SlideLightbox
+          slides={slides}
+          index={previewIndex}
+          onIndex={(next) => {
+            setPreviewIndex(next);
+            setIndex(next);
+          }}
+          onClose={() => setPreviewIndex(null)}
+        />
+      )}
     </div>
   );
 }

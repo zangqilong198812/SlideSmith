@@ -26,8 +26,13 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const getConfig = () => req<AppConfig>('/config');
 
-// Global settings only (keys + model + scraper actor).
-export const saveConfig = (patch: { keys?: AppConfig['keys']; model?: string; pinterestActor?: string }) =>
+// Global settings only (keys + AI endpoint/model + scraper actor).
+export const saveConfig = (patch: {
+  keys?: AppConfig['keys'];
+  aiBaseUrl?: string;
+  model?: string;
+  pinterestActor?: string;
+}) =>
   req<AppConfig>('/config', { method: 'PUT', body: JSON.stringify(patch) });
 
 // Projects — each has its own Brain + default post-bridge accounts.
@@ -36,7 +41,7 @@ export const createProject = (name?: string) =>
 
 export const updateProject = (
   id: string,
-  patch: Partial<Pick<Project, 'name' | 'brain' | 'defaults' | 'imagePacks'>>
+  patch: Partial<Pick<Project, 'name' | 'brain' | 'defaults' | 'imagePacks' | 'finalSlideImageUrl'>>
 ) => req<AppConfig>(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(patch) });
 
 export const deleteProject = (id: string) =>
@@ -44,6 +49,12 @@ export const deleteProject = (id: string) =>
 
 export const activateProject = (id: string) =>
   req<AppConfig>(`/projects/${id}/activate`, { method: 'POST' });
+
+export const uploadFinalSlide = (projectId: string, dataUrl: string) =>
+  req<AppConfig>(`/projects/${projectId}/final-slide`, { method: 'POST', body: JSON.stringify({ dataUrl }) });
+
+export const clearFinalSlide = (projectId: string) =>
+  req<AppConfig>(`/projects/${projectId}/final-slide`, { method: 'DELETE' });
 
 export const testKeys = () =>
   req<{ postbridge: boolean; openrouter: boolean; apify: boolean; errors: Record<string, string> }>(

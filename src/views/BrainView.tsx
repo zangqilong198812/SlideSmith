@@ -1,5 +1,6 @@
 import type { BrainState } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
+import { useT } from '../i18n';
 
 interface BrainViewProps {
   brain: BrainState;
@@ -17,26 +18,27 @@ const textareaClass =
   'focus:border-ink-7 focus:ring-2 focus:ring-ink/10';
 
 export function BrainView({ brain, onChange }: BrainViewProps) {
+  const t = useT();
   return (
     <>
       <ViewHeader
-        title="Brain"
-        subtitle="What the AI knows about this project. Edits apply to all future generations."
+        title={t('Brain', '账号脑袋')}
+        subtitle={t('What the AI knows about this project. Edits apply to all future generations.', 'AI 对这个项目的理解。修改后只影响未来生成。')}
       />
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto p-8 space-y-8">
           {/* Niche & app */}
-          <Section title="Account context" description="Rarely changes. Defines who the AI is writing for.">
+          <Section title={t('Account context', '账号背景')} description={t('Rarely changes. Defines who the AI is writing for.', '通常不用频繁改，用来定义 AI 给谁写内容。')}>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Niche">
+              <Field label={t('Niche', '赛道')}>
                 <input
                   value={brain.niche}
                   onChange={(e) => onChange({ ...brain, niche: e.target.value })}
                   className={inputClass}
                 />
               </Field>
-              <Field label="App name">
+              <Field label={t('App name', 'App 名称')}>
                 <input
                   value={brain.appName}
                   onChange={(e) => onChange({ ...brain, appName: e.target.value })}
@@ -44,7 +46,7 @@ export function BrainView({ brain, onChange }: BrainViewProps) {
                 />
               </Field>
             </div>
-            <Field label="App description">
+            <Field label={t('App description', 'App 描述')}>
               <textarea
                 value={brain.appDescription}
                 onChange={(e) => onChange({ ...brain, appDescription: e.target.value })}
@@ -52,7 +54,7 @@ export function BrainView({ brain, onChange }: BrainViewProps) {
                 className={textareaClass}
               />
             </Field>
-            <Field label="Audience">
+            <Field label={t('Audience', '目标受众')}>
               <input
                 value={brain.audience}
                 onChange={(e) => onChange({ ...brain, audience: e.target.value })}
@@ -63,8 +65,8 @@ export function BrainView({ brain, onChange }: BrainViewProps) {
 
           {/* Style memory */}
           <Section
-            title="Style memory"
-            description="The voice and patterns that work for you. Describe your hooks, slide structure, and CTAs — the AI follows this closely."
+            title={t('Style memory', '风格记忆')}
+            description={t('The voice and patterns that work for you. Describe your hooks, slide structure, and CTAs — the AI follows this closely.', '记录适合你的语气、结构、hook 和 CTA，AI 会尽量贴近。')}
           >
             <textarea
               value={brain.styleMemory}

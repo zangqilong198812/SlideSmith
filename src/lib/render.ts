@@ -50,6 +50,13 @@ function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement) {
   ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
 }
 
+function drawContain(ctx: CanvasRenderingContext2D, img: HTMLImageElement) {
+  const scale = Math.min(W / img.width, H / img.height);
+  const w = img.width * scale;
+  const h = img.height * scale;
+  ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
+}
+
 export async function renderSlide(slide: Slide): Promise<string> {
   // Make sure the web font is ready, otherwise the first render uses a fallback.
   if (document.fonts?.ready) await document.fonts.ready;
@@ -63,10 +70,18 @@ export async function renderSlide(slide: Slide): Promise<string> {
     // Image background (same-origin: bundled at /library/… or scraped via /api/…).
     try {
       const img = await loadImage(slide.imageUrl);
-      drawCover(ctx, img);
-      // Darken so white text stays readable.
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      ctx.fillRect(0, 0, W, H);
+      if (slide.imageFit === 'contain') {
+        ctx.fillStyle = slide.bgFrom || '#ffffff';
+        ctx.fillRect(0, 0, W, H);
+        drawContain(ctx, img);
+      } else {
+        drawCover(ctx, img);
+      }
+      if (slide.darkOverlay !== false) {
+        // Darken so white text stays readable.
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.fillRect(0, 0, W, H);
+      }
     } catch {
       ctx.fillStyle = slide.bgFrom || '#0f172a';
       ctx.fillRect(0, 0, W, H);

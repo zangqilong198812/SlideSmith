@@ -11,6 +11,9 @@ import {
   getActiveProject,
   createProject,
   updateProject,
+  saveFinalSlide,
+  clearFinalSlide,
+  getFinalSlideFile,
   deleteProject,
   setActiveProject,
   getQueue,
@@ -55,7 +58,7 @@ const h = (fn) => (req, res) => fn(req, res).catch((e) => {
 
 // ── Config ──────────────────────────────────────────────────────────────────
 app.get('/api/config', h(async (_req, res) => res.json(getConfig())))
-// Global settings only: keys + model. Project data goes through /api/projects.
+// Global settings only: keys + AI endpoint/model. Project data goes through /api/projects.
 app.put('/api/config', h(async (req, res) => res.json(saveGlobal(req.body || {}))))
 
 // ── Projects (each = a Brain + default post-bridge accounts) ──────────────────
@@ -63,17 +66,25 @@ app.post('/api/projects', h(async (req, res) => res.json(createProject(req.body?
 app.put('/api/projects/:id', h(async (req, res) => res.json(updateProject(req.params.id, req.body || {}))))
 app.delete('/api/projects/:id', h(async (req, res) => res.json(deleteProject(req.params.id))))
 app.post('/api/projects/:id/activate', h(async (req, res) => res.json(setActiveProject(req.params.id))))
+app.post('/api/projects/:id/final-slide', h(async (req, res) => res.json(saveFinalSlide(req.params.id, req.body?.dataUrl))))
+app.delete('/api/projects/:id/final-slide', h(async (req, res) => res.json(clearFinalSlide(req.params.id))))
+app.get('/api/final-slide/:id', h(async (req, res) => {
+  const file = getFinalSlideFile(req.params.id)
+  if (!file) return res.status(404).end()
+  const type = file.ext === '.webp' ? 'image/webp' : file.ext === '.png' ? 'image/png' : 'image/jpeg'
+  res.type(type).sendFile(file.path, { dotfiles: 'allow' })
+}))
 
 // Validate that the saved keys actually work, so Settings can show a green check.
 app.post('/api/config/test', h(async (_req, res) => {
-  const { keys } = getConfig()
+  const { keys, aiBaseUrl } = getConfig()
   const result = { postbridge: false, openrouter: false, apify: false, errors: {} }
   if (keys.postbridge) {
     try { await listAccounts(keys.postbridge); result.postbridge = true }
     catch (e) { result.errors.postbridge = e.message }
   }
   if (keys.openrouter) {
-    try { await validateKey(keys.openrouter); result.openrouter = true }
+    try { await validateKey(keys.openrouter, aiBaseUrl); result.openrouter = true }
     catch (e) { result.errors.openrouter = e.message }
   }
   if (keys.apify) {
@@ -96,10 +107,10 @@ app.get('/api/queue', h(async (_req, res) => {
 }))
 
 app.post('/api/generate', h(async (req, res) => {
-  const { keys, model } = getConfig()
+  const { keys, aiBaseUrl, model } = getConfig()
   const project = getActiveProject()
   const count = Math.min(Math.max(Math.round(Number(req.body?.count) || 4), 1), 100)
-  const slideshows = await generateSlideshows({ apiKey: keys.openrouter, model, brain: project.brain, count })
+  const slideshows = await generateSlideshows({ apiKey: keys.openrouter, baseUrl: aiBaseUrl, model, brain: project.brain, count })
 
   // Auto-assign background images. A per-batch `packs` override (from the
   // Generate modal) wins; otherwise fall back to the project's saved packs.
@@ -117,6 +128,19 @@ app.post('/api/generate', h(async (req, res) => {
         slide.imageUrl = pick.url
         used.add(pick.url)
       }
+    }
+  }
+  if (project.finalSlideImageUrl) {
+    for (const show of slideshows) {
+      show.slides.push({
+        id: `${show.id}-final`,
+        text: '',
+        imageUrl: project.finalSlideImageUrl,
+        imageFit: 'contain',
+        darkOverlay: false,
+        bgFrom: '#ffffff',
+        bgTo: '#ffffff',
+      })
     }
   }
 

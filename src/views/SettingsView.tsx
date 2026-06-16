@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Check, X, Loader2, KeyRound, Trash2, Info } from 'lucide-react';
+import { Check, X, Loader2, KeyRound, Trash2, Info, Image as ImageIcon, Upload } from 'lucide-react';
 import type { AppConfig, Project, SocialAccount, ModelOption } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
-import { testKeys, getModels } from '../lib/api';
+import { testKeys, getModels, uploadFinalSlide, clearFinalSlide } from '../lib/api';
 import { PackPicker } from '../components/PackPicker';
+import { SlidePreview } from '../components/SlidePreview';
+import { setLanguage, useLanguage, useT } from '../i18n';
 
 interface SettingsViewProps {
   config: AppConfig;
@@ -13,17 +15,22 @@ interface SettingsViewProps {
   canDelete: boolean;
   onSave: (patch: {
     keys?: AppConfig['keys'];
+    aiBaseUrl?: string;
     model?: string;
     pinterestActor?: string;
     name?: string;
     defaults?: Project['defaults'];
     imagePacks?: string[];
   }) => Promise<void>;
+  onConfigChange: (config: AppConfig) => void;
   onDeleteProject: () => void;
   onReloadAccounts: () => void;
 }
 
 const POSTBRIDGE_URL = 'https://post-bridge.com?atp=clip-factory';
+const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
+const DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
+const DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-flash';
 
 const PostBridgeLink = ({ children }: { children: React.ReactNode }) => (
   <a href={POSTBRIDGE_URL} target="_blank" rel="noreferrer" className="text-ink-4 underline hover:text-ink">
@@ -42,11 +49,15 @@ export function SettingsView({
   accounts,
   canDelete,
   onSave,
+  onConfigChange,
   onDeleteProject,
   onReloadAccounts,
 }: SettingsViewProps) {
+  const language = useLanguage();
+  const t = useT();
   const [postbridge, setPostbridge] = useState(config.keys.postbridge);
   const [openrouter, setOpenrouter] = useState(config.keys.openrouter);
+  const [aiBaseUrl, setAiBaseUrl] = useState(config.aiBaseUrl || OPENROUTER_BASE_URL);
   const [apify, setApify] = useState(config.keys.apify);
   const [pinterestActor, setPinterestActor] = useState(config.pinterestActor);
   const [model, setModel] = useState(config.model);
@@ -58,6 +69,7 @@ export function SettingsView({
   const [modelFilter, setModelFilter] = useState('');
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [finalSlideBusy, setFinalSlideBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [test, setTest] = useState<{ postbridge: boolean; openrouter: boolean; apify: boolean; errors: Record<string, string> } | null>(null);
@@ -81,6 +93,7 @@ export function SettingsView({
     try {
       await onSave({
         keys: { postbridge, openrouter, apify },
+        aiBaseUrl,
         model,
         pinterestActor,
         name,
@@ -111,6 +124,37 @@ export function SettingsView({
   const toggleAccount = (id: number) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
+  const uploadFinal = async (file: File | null) => {
+    if (!file) return;
+    setFinalSlideBusy(true);
+    setSaveError(null);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(reader.error || new Error('Could not read image.'));
+        reader.readAsDataURL(file);
+      });
+      onConfigChange(await uploadFinalSlide(project.id, dataUrl));
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFinalSlideBusy(false);
+    }
+  };
+
+  const clearFinal = async () => {
+    setFinalSlideBusy(true);
+    setSaveError(null);
+    try {
+      onConfigChange(await clearFinalSlide(project.id));
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFinalSlideBusy(false);
+    }
+  };
+
   const filtered = modelFilter
     ? models.filter(
         (m) =>
@@ -118,39 +162,62 @@ export function SettingsView({
           m.name.toLowerCase().includes(modelFilter.toLowerCase())
       )
     : models;
+  const isDeepSeek = aiBaseUrl.includes('deepseek');
 
   return (
     <>
       <ViewHeader
-        title="Settings"
-        subtitle="Your own API keys, stored locally on this machine — never sent anywhere but the services they belong to."
+        title={t('Settings', '设置')}
+        subtitle={t(
+          'Your own API keys, stored locally on this machine — never sent anywhere but the services they belong to.',
+          '你的 API Key 会保存在本机，只会发送给对应服务。'
+        )}
       />
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto p-8 space-y-8">
           {/* Project */}
           <Section
-            title="Project"
-            description="A project is one brand/account. Its Brain and default posting accounts are separate — your API keys and model are shared across all projects."
+            title={t('Project', '项目')}
+            description={t(
+              'A project is one brand/account. Its Brain and default posting accounts are separate — your API keys and model are shared across all projects.',
+              '一个项目对应一个品牌/账号。Brain 和默认发布账号按项目区分，API Key 和模型全局共享。'
+            )}
           >
-            <Field label="Project name">
+            <Field label={t('Project name', '项目名称')}>
               <input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} />
             </Field>
             {canDelete && (
               <Button variant="danger-ghost" icon={<Trash2 size={13} />} onClick={onDeleteProject}>
-                Delete this project
+                {t('Delete this project', '删除这个项目')}
               </Button>
             )}
           </Section>
 
+          <Section
+            title={t('Language', '语言')}
+            description={t('Choose the interface language for this browser.', '选择当前浏览器里的界面语言。')}
+          >
+            <Field label={t('Interface language', '界面语言')}>
+              <select
+                value={language}
+                onChange={(e) => setLanguage(e.target.value === 'en' ? 'en' : 'zh')}
+                className={inputClass}
+              >
+                <option value="zh">中文</option>
+                <option value="en">English</option>
+              </select>
+            </Field>
+          </Section>
+
           {/* Keys (global) */}
           <Section
-            title="API keys"
-            description="Shared across all projects. Stored in ~/.slidesmith/config.json on your computer."
+            title={t('API keys', 'API Key')}
+            description={t('Shared across all projects. Stored in ~/.slidesmith/config.json on your computer.', '所有项目共用。保存在你电脑的 ~/.slidesmith/config.json。')}
           >
             <Field
-              label="post-bridge API key"
-              hint={<>Handles scheduling, posting &amp; analytics. Get one at <PostBridgeLink>post-bridge.com</PostBridgeLink>.</>}
+              label={t('post-bridge API key', 'post-bridge API Key')}
+              hint={<>{t('Handles scheduling, posting & analytics. Get one at', '负责排程、发布和数据统计。去')} <PostBridgeLink>post-bridge.com</PostBridgeLink> {t('get one.', '获取。')}</>}
             >
               <input
                 value={postbridge}
@@ -160,16 +227,46 @@ export function SettingsView({
               />
               <TestBadge ok={test?.postbridge} error={test?.errors?.postbridge} />
             </Field>
-            <Field label="OpenRouter API key" hint="Runs the AI that writes your slideshows — one key, any model. Get one at openrouter.ai/keys.">
+            <Field label={t('AI provider', 'AI 服务商')} hint={t("Use OpenRouter's model catalog, or connect directly to DeepSeek with your DeepSeek key.", '可以用 OpenRouter 模型目录，也可以直接填 DeepSeek Key。')}>
+              <div className="flex gap-2">
+                <Button
+                  variant={aiBaseUrl === DEEPSEEK_BASE_URL ? 'primary' : 'secondary'}
+                  onClick={() => {
+                    setAiBaseUrl(DEEPSEEK_BASE_URL);
+                    setModel((current) => current.startsWith('deepseek-') ? current : DEEPSEEK_DEFAULT_MODEL);
+                  }}
+                >
+                  DeepSeek
+                </Button>
+                <Button
+                  variant={aiBaseUrl === OPENROUTER_BASE_URL ? 'primary' : 'secondary'}
+                  onClick={() => {
+                    setAiBaseUrl(OPENROUTER_BASE_URL);
+                    setModel((current) => current || 'openai/gpt-4o-mini');
+                  }}
+                >
+                  OpenRouter
+                </Button>
+              </div>
+            </Field>
+            <Field label={t('AI Base URL', 'AI Base URL')} hint="DeepSeek: https://api.deepseek.com. OpenRouter: https://openrouter.ai/api/v1.">
+              <input
+                value={aiBaseUrl}
+                onChange={(e) => setAiBaseUrl(e.target.value)}
+                placeholder={DEEPSEEK_BASE_URL}
+                className={`${inputClass} font-mono`}
+              />
+            </Field>
+            <Field label={t('AI API key', 'AI API Key')} hint={t('Runs the AI that writes your slideshows. Paste a DeepSeek key for DeepSeek, or an OpenRouter key for OpenRouter.', '用于生成轮播文案。DeepSeek 就填 DeepSeek Key，OpenRouter 就填 OpenRouter Key。')}>
               <input
                 value={openrouter}
                 onChange={(e) => setOpenrouter(e.target.value)}
-                placeholder="sk-or-..."
+                placeholder={isDeepSeek ? 'sk-...' : 'sk-or-...'}
                 className={`${inputClass} font-mono`}
               />
               <TestBadge ok={test?.openrouter} error={test?.errors?.openrouter} />
             </Field>
-            <Field label="Apify API key (optional)" hint="Only needed to scrape MORE Pinterest images. The bundled aesthetic packs work without it. Get one at console.apify.com.">
+            <Field label={t('Apify API key (optional)', 'Apify API Key（可选）')} hint={t('Only needed to scrape MORE Pinterest images. The bundled aesthetic packs work without it. Get one at console.apify.com.', '只有抓取更多 Pinterest 图片时才需要；内置素材包不需要。')}>
               <input
                 value={apify}
                 onChange={(e) => setApify(e.target.value)}
@@ -178,7 +275,7 @@ export function SettingsView({
               />
               <TestBadge ok={test?.apify} error={test?.errors?.apify} />
             </Field>
-            <Field label="Pinterest Apify actor" hint="The Apify actor used for scraping. Change only if you prefer a different one.">
+            <Field label={t('Pinterest Apify actor', 'Pinterest Apify Actor')} hint={t('The Apify actor used for scraping. Change only if you prefer a different one.', '用于抓取 Pinterest 的 Apify actor。一般不用改。')}>
               <input
                 value={pinterestActor}
                 onChange={(e) => setPinterestActor(e.target.value)}
@@ -186,33 +283,51 @@ export function SettingsView({
                 className={`${inputClass} font-mono`}
               />
             </Field>
-            <Field label="Model" hint={`Pick any model OpenRouter offers${models.length ? ` (${models.length} available)` : ''}.`}>
+            <Field
+              label={t('Model', '模型')}
+              hint={
+                isDeepSeek
+                  ? t('DeepSeek defaults: deepseek-v4-flash. Use deepseek-v4-pro for higher quality.', 'DeepSeek 默认 deepseek-v4-flash；质量优先可用 deepseek-v4-pro。')
+                  : t(`Type a model id, or filter OpenRouter models${models.length ? ` (${models.length} available)` : ''}.`, `输入模型 ID，或筛选 OpenRouter 模型${models.length ? `（${models.length} 个可用）` : ''}。`)
+              }
+            >
               <input
-                value={modelFilter}
-                onChange={(e) => setModelFilter(e.target.value)}
-                placeholder="Filter models… e.g. claude, gpt, llama"
-                className={`${inputClass} mb-2`}
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                list="ai-models"
+                placeholder={isDeepSeek ? DEEPSEEK_DEFAULT_MODEL : 'openai/gpt-4o-mini'}
+                className={`${inputClass} font-mono mb-2`}
               />
-              <select value={model} onChange={(e) => setModel(e.target.value)} className={inputClass}>
-                {model && !filtered.some((m) => m.id === model) && <option value={model}>{model}</option>}
-                {filtered.map((m) => (
+              {!isDeepSeek && (
+                <input
+                  value={modelFilter}
+                  onChange={(e) => setModelFilter(e.target.value)}
+                  placeholder="Filter OpenRouter models… e.g. claude, gpt, deepseek"
+                  className={inputClass}
+                />
+              )}
+              <datalist id="ai-models">
+                {filtered.slice(0, 200).map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.name}
                   </option>
                 ))}
-              </select>
+                <option value="deepseek-v4-flash">DeepSeek V4 Flash</option>
+                <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
+                <option value="deepseek-chat">DeepSeek Chat (legacy)</option>
+                <option value="deepseek-reasoner">DeepSeek Reasoner (legacy)</option>
+              </datalist>
             </Field>
           </Section>
 
           {/* Posting defaults (per project) */}
           <Section
-            title="Posting defaults"
-            description="Which connected accounts this project posts to, and whether to schedule directly or save as a draft in post-bridge."
+            title={t('Posting defaults', '发布默认值')}
+            description={t('Which connected accounts this project posts to, and whether to schedule directly or save as a draft in post-bridge.', '设置这个项目默认发到哪些账号，以及直接排程还是保存到 post-bridge 草稿。')}
           >
             {accounts.length === 0 ? (
               <p className="text-[12px] text-ink-5">
-                No connected accounts yet. Add your post-bridge key above, hit Test, then connect
-                accounts at <PostBridgeLink>post-bridge.com</PostBridgeLink> — they'll appear here.
+                {t('No connected accounts yet. Add your post-bridge key above, hit Test, then connect accounts at', '还没有连接账号。先填 post-bridge Key 并测试，然后去')} <PostBridgeLink>post-bridge.com</PostBridgeLink> {t("connect accounts — they'll appear here.", '连接账号，之后会显示在这里。')}
               </p>
             ) : (
               <div className="flex flex-col gap-1.5">
@@ -229,13 +344,13 @@ export function SettingsView({
               </div>
             )}
 
-            <Field label="Default mode">
+            <Field label={t('Default mode', '默认模式')}>
               <div className="flex gap-2">
                 <Button variant={mode === 'draft' ? 'primary' : 'secondary'} onClick={() => setMode('draft')}>
-                  Save as draft
+                  {t('Save as draft', '保存为草稿')}
                 </Button>
                 <Button variant={mode === 'schedule' ? 'primary' : 'secondary'} onClick={() => setMode('schedule')}>
-                  Schedule directly
+                  {t('Schedule directly', '直接排程')}
                 </Button>
               </div>
             </Field>
@@ -244,10 +359,61 @@ export function SettingsView({
 
           {/* Background packs (per project) */}
           <Section
-            title="Background packs"
-            description="Which image packs new slideshows pull backgrounds from when you hit Generate. Select none to generate with plain gradients."
+            title={t('Background packs', '背景素材包')}
+            description={t('Which image packs new slideshows pull backgrounds from when you hit Generate. Select none to generate with plain gradients.', '生成时从哪些素材包抽背景。全不选则使用纯渐变背景。')}
           >
             <PackPicker selected={imagePacks} onChange={setImagePacks} />
+          </Section>
+
+          <Section
+            title={t('Default final slide', '默认最后一页')}
+            description={t('Appended to every newly generated slideshow. Use this for an App Store screenshot, QR code, or product CTA.', '会自动追加到新生成内容的最后。适合放 App Store 截图、二维码或产品 CTA。')}
+          >
+            <div className="flex items-start gap-4">
+              <div className="w-24 shrink-0">
+                {project.finalSlideImageUrl ? (
+                  <SlidePreview
+                    slide={{
+                      id: 'final-slide-preview',
+                      text: '',
+                      imageUrl: project.finalSlideImageUrl,
+                      imageFit: 'contain',
+                      darkOverlay: false,
+                      bgFrom: '#ffffff',
+                      bgTo: '#ffffff',
+                    }}
+                    className="border border-line"
+                  />
+                ) : (
+                  <div className="aspect-[9/16] rounded-md border border-dashed border-line-2 bg-raised flex items-center justify-center text-ink-6">
+                    <ImageIcon size={20} />
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0 space-y-2">
+                <p className="text-[12px] text-ink-5 leading-relaxed">
+                  {t('New generations will end with this exact image. It is rendered without overlay text and preserved with contain fit.', '新生成内容会以这张图结尾。不叠加文字，使用完整显示模式。')}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <label className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-line text-[12px] text-ink-4 hover:text-ink hover:border-line-2 cursor-pointer">
+                    {finalSlideBusy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                    {t('Upload image', '上传图片')}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="hidden"
+                      disabled={finalSlideBusy}
+                      onChange={(e) => void uploadFinal(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                  {project.finalSlideImageUrl && (
+                    <Button variant="secondary" icon={<Trash2 size={13} />} onClick={clearFinal} disabled={finalSlideBusy}>
+                      {t('Clear', '清除')}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
           </Section>
 
           <div className="flex items-center gap-3 pt-2">
@@ -258,11 +424,11 @@ export function SettingsView({
               onClick={save}
               disabled={saving}
             >
-              {saving ? 'Saving…' : 'Save settings'}
+              {saving ? t('Saving…', '保存中…') : t('Save settings', '保存设置')}
             </Button>
             <Button variant="secondary" size="lg" onClick={runTest} disabled={testing || saving}>
               {testing ? <Loader2 size={13} className="animate-spin" /> : null}
-              Test connection
+              {t('Test connection', '测试连接')}
             </Button>
             {saved && !saveError && (
               <span className="text-[12px] text-emerald-600 flex items-center gap-1">

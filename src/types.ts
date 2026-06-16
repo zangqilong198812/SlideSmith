@@ -6,6 +6,8 @@ export interface Slide {
   // Generated slides have no source image — they're rendered from text over a
   // gradient. `imageUrl` is kept optional for backwards-compat / future use.
   imageUrl?: string;
+  imageFit?: 'cover' | 'contain';
+  darkOverlay?: boolean;
   bgFrom?: string;
   bgTo?: string;
 }
@@ -39,10 +41,12 @@ export interface Project {
   brain: BrainState;
   defaults: ProjectDefaults;
   imagePacks: string[]; // background packs generation draws from ([] = gradients only)
+  finalSlideImageUrl?: string;
 }
 
 export interface AppConfig {
   keys: { postbridge: string; openrouter: string; apify: string };
+  aiBaseUrl: string;
   model: string;
   pinterestActor: string;
   projects: Project[];

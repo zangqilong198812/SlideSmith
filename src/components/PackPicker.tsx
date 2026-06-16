@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Check } from 'lucide-react';
 import type { LibraryPack } from '../types';
 import { getPacks } from '../lib/api';
+import { useT } from '../i18n';
 
 interface PackPickerProps {
   selected: string[];
@@ -12,6 +13,7 @@ interface PackPickerProps {
 // Aesthetic-pack picker with cover thumbnails. Used in the Generate modal and
 // Settings. Packs come from /api/library/packs.
 export function PackPicker({ selected, onChange, disabled }: PackPickerProps) {
+  const t = useT();
   const [packs, setPacks] = useState<LibraryPack[] | null>(null);
 
   useEffect(() => {
@@ -27,16 +29,18 @@ export function PackPicker({ selected, onChange, disabled }: PackPickerProps) {
     <div>
       <div className="flex items-center justify-between mb-2">
         <span className="text-[11px] text-ink-6">
-          {selected.length ? `${selected.length} of ${allNames.length} selected` : 'None — plain gradients'}
+          {selected.length
+            ? t(`${selected.length} of ${allNames.length} selected`, `已选 ${selected.length}/${allNames.length}`)
+            : t('None — plain gradients', '未选择 — 使用纯渐变')}
         </span>
         <div className="flex gap-2">
-          <button onClick={() => onChange(allNames)} disabled={disabled} className="text-[11px] text-ink-5 hover:text-ink disabled:opacity-50">All</button>
-          <button onClick={() => onChange([])} disabled={disabled} className="text-[11px] text-ink-5 hover:text-ink disabled:opacity-50">None</button>
+          <button onClick={() => onChange(allNames)} disabled={disabled} className="text-[11px] text-ink-5 hover:text-ink disabled:opacity-50">{t('All', '全选')}</button>
+          <button onClick={() => onChange([])} disabled={disabled} className="text-[11px] text-ink-5 hover:text-ink disabled:opacity-50">{t('None', '全不选')}</button>
         </div>
       </div>
 
       {packs === null ? (
-        <div className="text-[12px] text-ink-5 py-6 text-center">Loading packs…</div>
+        <div className="text-[12px] text-ink-5 py-6 text-center">{t('Loading packs…', '加载素材包…')}</div>
       ) : (
         <div className="grid grid-cols-3 gap-2">
           {packs.map((pack) => {
@@ -63,7 +67,7 @@ export function PackPicker({ selected, onChange, disabled }: PackPickerProps) {
                 {/* Name + count */}
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 pt-5 pb-1.5">
                   <div className="text-[11px] font-semibold text-white truncate leading-tight">{pack.name}</div>
-                  <div className="text-[10px] text-white/70">{pack.count} images</div>
+                  <div className="text-[10px] text-white/70">{t(`${pack.count} images`, `${pack.count} 张`)}</div>
                 </div>
                 {/* Selected check */}
                 {on && (

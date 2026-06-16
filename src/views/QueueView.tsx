@@ -1,9 +1,12 @@
-import { Check, X, Sparkles, RefreshCw, Loader2, Pencil } from 'lucide-react';
+import { useState } from 'react';
+import { Check, X, Sparkles, RefreshCw, Loader2, Pencil, Trash2 } from 'lucide-react';
 import type { Slideshow } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { SlidePreview } from '../components/SlidePreview';
 import { Button } from '../components/Button';
 import { IconButton } from '../components/IconButton';
+import { SlideLightbox } from '../components/Lightbox';
+import { useT } from '../i18n';
 
 interface QueueViewProps {
   slideshows: Slideshow[];
@@ -18,6 +21,7 @@ interface QueueViewProps {
   onSelectAll: () => void;
   onClearSelection: () => void;
   onBulkSchedule: () => void;
+  onDeleteSelected: () => void;
 }
 
 export function QueueView({
@@ -33,26 +37,34 @@ export function QueueView({
   onSelectAll,
   onClearSelection,
   onBulkSchedule,
+  onDeleteSelected,
 }: QueueViewProps) {
+  const t = useT();
   const selectedCount = selectedIds.length;
   return (
     <>
       <ViewHeader
         title="Queue"
-        subtitle={`${slideshows.length} slideshows waiting for your review. Approve to send to the scheduler.`}
+        subtitle={t(
+          `${slideshows.length} slideshows waiting for your review. Approve to send to the scheduler.`,
+          `${slideshows.length} 条内容等待审核。满意后 Approve 发送到排程。`
+        )}
         right={
           <>
             {selectedCount > 0 ? (
               <>
-                <span className="text-[12px] text-ink-5">{selectedCount} selected</span>
+                <span className="text-[12px] text-ink-5">{t(`${selectedCount} selected`, `已选 ${selectedCount} 条`)}</span>
                 <Button variant="primary" icon={<Check size={13} />} onClick={onBulkSchedule}>
-                  Schedule {selectedCount}
+                  {t(`Schedule ${selectedCount}`, `排程 ${selectedCount} 条`)}
                 </Button>
-                <Button variant="ghost" onClick={onClearSelection}>Clear</Button>
+                <Button variant="danger-ghost" icon={<Trash2 size={13} />} onClick={onDeleteSelected}>
+                  {t(`Delete ${selectedCount}`, `删除 ${selectedCount} 条`)}
+                </Button>
+                <Button variant="ghost" onClick={onClearSelection}>{t('Clear', '取消选择')}</Button>
               </>
             ) : (
               slideshows.length > 0 && (
-                <Button variant="secondary" onClick={onSelectAll}>Select all</Button>
+                <Button variant="secondary" onClick={onSelectAll}>{t('Select all', '全选')}</Button>
               )
             )}
             <Button
@@ -61,7 +73,7 @@ export function QueueView({
               onClick={onGenerate}
               disabled={generating || !canGenerate}
             >
-              {generating ? 'Generating…' : 'Generate more'}
+              {generating ? t('Generating…', '生成中…') : t('Generate more', '继续生成')}
             </Button>
           </>
         }
@@ -74,12 +86,12 @@ export function QueueView({
               <Check size={20} className="text-ink-5" />
             </div>
             <h2 className="text-[15px] font-semibold text-ink">
-              {canGenerate ? 'Queue empty' : 'Add your OpenRouter key to start'}
+              {canGenerate ? t('Queue empty', '队列为空') : t('Add your AI key to start', '先添加 AI Key')}
             </h2>
             <p className="text-[13px] text-ink-5 mt-1">
               {canGenerate
-                ? 'Generate a fresh batch of slideshows with AI.'
-                : 'Head to Settings, paste your OpenRouter API key, and tune the Brain.'}
+                ? t('Generate a fresh batch of slideshows with AI.', '用 AI 生成一批新的轮播内容。')
+                : t('Head to Settings, paste your AI API key, and tune the Brain.', '去设置里填 AI API Key，并配置账号脑袋。')}
             </p>
             {canGenerate && (
               <div className="mt-4 flex justify-center">
@@ -89,7 +101,7 @@ export function QueueView({
                   onClick={onGenerate}
                   disabled={generating}
                 >
-                  {generating ? 'Generating…' : 'Generate now'}
+                  {generating ? t('Generating…', '生成中…') : t('Generate now', '现在生成')}
                 </Button>
               </div>
             )}
@@ -126,6 +138,9 @@ interface CardProps {
 }
 
 function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onReject, onEdit }: CardProps) {
+  const t = useT();
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+
   return (
     <div className={`bg-card border rounded-xl overflow-hidden animate-fadeIn transition-colors ${selected ? 'border-ink ring-1 ring-ink' : 'border-line'}`}>
       {/* Slide strip */}
@@ -134,8 +149,8 @@ function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onRejec
           <input type="checkbox" checked={selected} onChange={onToggleSelect} className="cursor-pointer" />
         </label>
         <div className="grid grid-cols-6 gap-1.5">
-          {slideshow.slides.map((slide) => (
-            <SlidePreview key={slide.id} slide={slide} />
+          {slideshow.slides.map((slide, i) => (
+            <SlidePreview key={slide.id} slide={slide} onClick={() => setPreviewIndex(i)} />
           ))}
         </div>
       </div>
@@ -167,7 +182,7 @@ function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onRejec
         {/* Actions */}
         <div className="flex items-center gap-2 mt-4 pt-3 border-t border-line">
           <Button variant="secondary" icon={<Pencil size={13} />} onClick={onEdit}>
-            Edit
+            {t('Edit', '编辑')}
           </Button>
           <Button
             variant="primary"
@@ -175,7 +190,7 @@ function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onRejec
             onClick={onApprove}
             fullWidth
           >
-            Approve
+            {t('Approve', '发送')}
           </Button>
           <IconButton
             variant="secondary"
@@ -185,6 +200,14 @@ function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onRejec
           />
         </div>
       </div>
+      {previewIndex !== null && (
+        <SlideLightbox
+          slides={slideshow.slides}
+          index={previewIndex}
+          onIndex={setPreviewIndex}
+          onClose={() => setPreviewIndex(null)}
+        />
+      )}
     </div>
   );
 }

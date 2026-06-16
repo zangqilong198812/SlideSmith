@@ -4,6 +4,8 @@ import type { Slideshow, SocialAccount } from '../types';
 import { getScheduledPosts } from '../lib/api';
 import { Button } from './Button';
 import { SlidePreview } from './SlidePreview';
+import { SlideLightbox } from './Lightbox';
+import { useT } from '../i18n';
 
 // Default gap after the last thing already scheduled (or after now, if nothing
 // is queued) so the user isn't forced to pick a time from a blank field.
@@ -31,6 +33,7 @@ interface ScheduleModalProps {
 }
 
 export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfirm }: ScheduleModalProps) {
+  const t = useT();
   const [selected, setSelected] = useState<number[]>(defaults.socialAccountIds);
   const [mode, setMode] = useState<'draft' | 'schedule'>(defaults.mode);
   // Seed with now + gap immediately so the field is never blank; refine to
@@ -42,6 +45,7 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
   const [error, setError] = useState<string | null>(null);
   // Which mode succeeded, or null while still on the form. Drives the success screen.
   const [doneMode, setDoneMode] = useState<'draft' | 'schedule' | null>(null);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
   useEffect(() => {
     getScheduledPosts()
@@ -60,8 +64,8 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
 
   const confirm = async () => {
     setError(null);
-    if (!selected.length) return setError('Pick at least one account.');
-    if (mode === 'schedule' && !when) return setError('Pick a date & time, or save as a draft.');
+    if (!selected.length) return setError(t('Pick at least one account.', '至少选择一个账号。'));
+    if (mode === 'schedule' && !when) return setError(t('Pick a date & time, or save as a draft.', '选择发布时间，或保存为草稿。'));
     setBusy(true);
     try {
       await onConfirm({
@@ -87,12 +91,12 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
         >
           <CheckCircle2 size={32} className="text-emerald-600 mx-auto" />
           <h2 className="text-[16px] font-semibold text-ink mt-3">
-            {scheduled ? 'Scheduled' : 'Saved as draft'}
+            {scheduled ? t('Scheduled', '已排程') : t('Saved as draft', '已保存为草稿')}
           </h2>
           <p className="text-[13px] text-ink-5 mt-1.5 leading-snug">
             {scheduled
-              ? 'post-bridge will publish it at the time you picked.'
-              : 'It’s waiting in your post-bridge drafts to post by hand.'}
+              ? t('post-bridge will publish it at the time you picked.', 'post-bridge 会在你选择的时间发布。')
+              : t('It’s waiting in your post-bridge drafts to post by hand.', '它已经在 post-bridge 草稿里，等待你手动发布。')}
           </p>
           <div className="flex flex-col gap-2 mt-5">
             <a
@@ -101,10 +105,10 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
               rel="noreferrer"
               className="flex items-center justify-center gap-1.5 h-9 rounded-lg bg-ink text-bg text-[13px] font-medium hover:opacity-90"
             >
-              View on post-bridge <ExternalLink size={13} />
+              {t('View on post-bridge', '在 post-bridge 查看')} <ExternalLink size={13} />
             </a>
             <Button variant="secondary" onClick={onClose}>
-              Done
+              {t('Done', '完成')}
             </Button>
           </div>
         </div>
@@ -119,7 +123,7 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-line">
-          <h2 className="text-[15px] font-semibold text-ink">Schedule slideshow</h2>
+          <h2 className="text-[15px] font-semibold text-ink">{t('Schedule slideshow', '发送轮播内容')}</h2>
           <button onClick={onClose} className="text-ink-5 hover:text-ink">
             <X size={18} />
           </button>
@@ -129,8 +133,8 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
           {/* Preview */}
           <div>
             <div className="grid grid-cols-6 gap-1.5">
-              {slideshow.slides.map((s) => (
-                <SlidePreview key={s.id} slide={s} />
+              {slideshow.slides.map((s, i) => (
+                <SlidePreview key={s.id} slide={s} onClick={() => setPreviewIndex(i)} />
               ))}
             </div>
             <p className="text-[12px] text-ink-4 mt-2 line-clamp-2">{slideshow.caption}</p>
@@ -139,11 +143,11 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
           {/* Accounts */}
           <div>
             <label className="text-[11px] text-ink-5 mb-1.5 block uppercase tracking-widest font-semibold">
-              Post to
+              {t('Post to', '发布到')}
             </label>
             {accounts.length === 0 ? (
               <p className="text-[12px] text-ink-5">
-                No connected accounts. Add your post-bridge key in Settings and connect accounts at{' '}
+                {t('No connected accounts. Add your post-bridge key in Settings and connect accounts at', '还没有连接账号。先在设置里添加 post-bridge Key，然后去')}
                 <a
                   href="https://post-bridge.com?atp=clip-factory"
                   target="_blank"
@@ -173,14 +177,14 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
           {/* Mode */}
           <div>
             <label className="text-[11px] text-ink-5 mb-1.5 block uppercase tracking-widest font-semibold">
-              When
+              {t('When', '发布时间')}
             </label>
             <div className="flex gap-2 mb-2">
               <Button variant={mode === 'draft' ? 'primary' : 'secondary'} onClick={() => setMode('draft')}>
-                Save as draft
+                {t('Save as draft', '保存为草稿')}
               </Button>
               <Button variant={mode === 'schedule' ? 'primary' : 'secondary'} onClick={() => setMode('schedule')}>
-                Schedule
+                {t('Schedule', '排程')}
               </Button>
             </div>
             {mode === 'schedule' && (
@@ -197,12 +201,10 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
               <p className="text-[11px] text-ink-4 leading-snug">
                 {mode === 'draft' ? (
                   <>
-                    Saves to your post-bridge inbox to post by hand. No analytics come back on
-                    drafts (TikTok only reports content it posts itself) — but posting manually
-                    avoids automation detection, so reach potential is often higher.
+                    {t('Saves to your post-bridge inbox to post by hand. No analytics come back on drafts (TikTok only reports content it posts itself) — but posting manually avoids automation detection, so reach potential is often higher.', '保存到 post-bridge 草稿箱，之后手动发布。草稿不会回传数据（TikTok 只统计它自己发布的内容），但手动发布的自动化痕迹更少。')}
                   </>
                 ) : (
-                  <>post-bridge publishes this automatically at the chosen time and reports its analytics back to Results.</>
+                  <>{t('post-bridge publishes this automatically at the chosen time and reports its analytics back to Results.', 'post-bridge 会在指定时间自动发布，并把数据同步到数据页。')}</>
                 )}
               </p>
             </div>
@@ -213,7 +215,7 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
 
         <div className="px-5 py-4 border-t border-line flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose} disabled={busy}>
-            Cancel
+            {t('Cancel', '取消')}
           </Button>
           <Button
             variant="primary"
@@ -221,10 +223,18 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
             onClick={confirm}
             disabled={busy}
           >
-            {busy ? 'Uploading…' : mode === 'schedule' ? 'Schedule it' : 'Save draft'}
+            {busy ? t('Uploading…', '上传中…') : mode === 'schedule' ? t('Schedule it', '确认排程') : t('Save draft', '保存草稿')}
           </Button>
         </div>
       </div>
+      {previewIndex !== null && (
+        <SlideLightbox
+          slides={slideshow.slides}
+          index={previewIndex}
+          onIndex={setPreviewIndex}
+          onClose={() => setPreviewIndex(null)}
+        />
+      )}
     </div>
   );
 }

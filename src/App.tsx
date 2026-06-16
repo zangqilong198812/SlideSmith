@@ -27,7 +27,7 @@ export default function App() {
   const [generateOpen, setGenerateOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const hasOpenrouter = !!config?.keys.openrouter;
+  const hasAiKey = !!config?.keys.openrouter;
   const hasPostbridge = !!config?.keys.postbridge;
   const hasApify = !!config?.keys.apify;
   const activeProject: Project | undefined = config?.projects.find(
@@ -72,6 +72,16 @@ export default function App() {
 
   const reject = async (id: string) => {
     setQueue(await api.removeFromQueue(id));
+  };
+
+  const deleteSelected = async () => {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    setSelectedIds([]);
+    for (const id of ids) {
+      await api.removeFromQueue(id);
+    }
+    setQueue(await api.getQueue());
   };
 
   // Keep the multi-select in sync as queue items come and go.
@@ -121,14 +131,20 @@ export default function App() {
   // Global settings (keys/model) + per-project edits (name/defaults), in one call.
   const saveSettings = async (patch: {
     keys?: AppConfig['keys'];
+    aiBaseUrl?: string;
     model?: string;
     pinterestActor?: string;
     name?: string;
     defaults?: Project['defaults'];
     imagePacks?: string[];
   }) => {
-    if (patch.keys || patch.model !== undefined || patch.pinterestActor !== undefined) {
-      await api.saveConfig({ keys: patch.keys, model: patch.model, pinterestActor: patch.pinterestActor });
+    if (patch.keys || patch.aiBaseUrl !== undefined || patch.model !== undefined || patch.pinterestActor !== undefined) {
+      await api.saveConfig({
+        keys: patch.keys,
+        aiBaseUrl: patch.aiBaseUrl,
+        model: patch.model,
+        pinterestActor: patch.pinterestActor,
+      });
     }
     if (activeProject && (patch.name !== undefined || patch.defaults || patch.imagePacks)) {
       await api.updateProject(activeProject.id, {
@@ -198,7 +214,7 @@ export default function App() {
           <QueueView
             slideshows={queue}
             generating={generating}
-            canGenerate={hasOpenrouter}
+            canGenerate={hasAiKey}
             onGenerate={() => setGenerateOpen(true)}
             selectedIds={selectedIds}
             onApprove={(id) => setScheduling(queue.find((s) => s.id === id) || null)}
@@ -208,6 +224,7 @@ export default function App() {
             onSelectAll={() => setSelectedIds(queue.map((s) => s.id))}
             onClearSelection={() => setSelectedIds([])}
             onBulkSchedule={() => setBulkOpen(true)}
+            onDeleteSelected={deleteSelected}
           />
         )}
         {activeView === 'library' && <LibraryView hasApify={hasApify} />}
@@ -221,6 +238,7 @@ export default function App() {
             accounts={accounts}
             canDelete={config.projects.length > 1}
             onSave={saveSettings}
+            onConfigChange={setConfig}
             onDeleteProject={() => removeProject(activeProject.id)}
             onReloadAccounts={loadAccounts}
           />
@@ -272,4 +290,3 @@ export default function App() {
     </div>
   );
 }
-

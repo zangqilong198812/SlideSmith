@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { LayoutGrid, CalendarClock, LineChart, Brain, Settings, ChevronsUpDown, Plus, Check, Images } from 'lucide-react';
 import type { ViewKey, Project } from '../types';
+import { useT } from '../i18n';
 
 interface SidebarProps {
   activeView: ViewKey;
@@ -13,12 +14,12 @@ interface SidebarProps {
   onNewProject: () => void;
 }
 
-const nav: { key: ViewKey; label: string; icon: typeof LayoutGrid; badge?: 'queue' | 'scheduled' }[] = [
-  { key: 'queue', label: 'Queue', icon: LayoutGrid, badge: 'queue' },
-  { key: 'library', label: 'Library', icon: Images },
-  { key: 'schedule', label: 'Schedule', icon: CalendarClock, badge: 'scheduled' },
-  { key: 'results', label: 'Results', icon: LineChart },
-  { key: 'brain', label: 'Brain', icon: Brain },
+const nav: { key: ViewKey; label: [string, string]; icon: typeof LayoutGrid; badge?: 'queue' | 'scheduled' }[] = [
+  { key: 'queue', label: ['Queue', '队列'], icon: LayoutGrid, badge: 'queue' },
+  { key: 'library', label: ['Library', '素材库'], icon: Images },
+  { key: 'schedule', label: ['Schedule', '排程'], icon: CalendarClock, badge: 'scheduled' },
+  { key: 'results', label: ['Results', '数据'], icon: LineChart },
+  { key: 'brain', label: ['Brain', '账号脑袋'], icon: Brain },
 ];
 
 function initials(name: string) {
@@ -35,6 +36,7 @@ export function Sidebar({
   onSwitchProject,
   onNewProject,
 }: SidebarProps) {
+  const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
   const active = projects.find((p) => p.id === activeProjectId) ?? projects[0];
 
@@ -46,14 +48,14 @@ export function Sidebar({
           <img src="/android-chrome-192x192.png" alt="Slidesmith" className="w-7 h-7 rounded-[7px] shrink-0" />
           <div className="flex flex-col leading-none">
             <span className="text-[14px] font-semibold text-ink">Slidesmith</span>
-            <span className="text-[11px] text-ink-5 mt-0.5">Open Source Generator</span>
+            <span className="text-[11px] text-ink-5 mt-0.5">{t('Open Source Generator', '开源生成器')}</span>
           </div>
         </div>
       </div>
 
       {/* Project switcher */}
       <div className="px-3 py-3 border-b border-line relative">
-        <span className="text-[11px] font-medium text-ink-6 uppercase tracking-widest px-1">Project</span>
+        <span className="text-[11px] font-medium text-ink-6 uppercase tracking-widest px-1">{t('Project', '项目')}</span>
         <button
           onClick={() => setMenuOpen((o) => !o)}
           className="mt-2 w-full flex items-center gap-2.5 px-2 py-2 rounded-lg bg-raised hover:bg-line transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ink/10"
@@ -92,7 +94,7 @@ export function Sidebar({
                   className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-ink-4 hover:bg-raised hover:text-ink transition-colors"
                 >
                   <Plus size={13} className="shrink-0" />
-                  <span className="text-[13px]">New project</span>
+                  <span className="text-[13px]">{t('New project', '新项目')}</span>
                 </button>
               </div>
             </div>
@@ -115,7 +117,7 @@ export function Sidebar({
                 }`}
               >
                 <Icon size={14} className="shrink-0" />
-                <span className="text-[13px] font-medium flex-1 truncate">{label}</span>
+                <span className="text-[13px] font-medium flex-1 truncate">{t(label[0], label[1])}</span>
                 {count !== undefined && count > 0 && (
                   <span className={`text-[10px] font-medium leading-none px-1.5 h-[18px] inline-flex items-center rounded-md border ${
                     isActive ? 'bg-ink text-bg border-ink' : 'bg-raised text-ink-5 border-line'
@@ -138,7 +140,7 @@ export function Sidebar({
           }`}
         >
           <Settings size={14} className="shrink-0" />
-          <span className="text-[13px]">Settings</span>
+          <span className="text-[13px]">{t('Settings', '设置')}</span>
         </button>
       </div>
     </aside>

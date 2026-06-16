@@ -3,6 +3,7 @@ import { Eye, Heart, MessageCircle, Share2, Loader2, RefreshCw } from 'lucide-re
 import type { PostResult } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { getResults, syncResults } from '../lib/api';
+import { useT } from '../i18n';
 
 interface ResultsViewProps {
   configured: boolean;
@@ -15,6 +16,7 @@ function formatNumber(n: number) {
 }
 
 export function ResultsView({ configured }: ResultsViewProps) {
+  const t = useT();
   const [results, setResults] = useState<PostResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -47,8 +49,8 @@ export function ResultsView({ configured }: ResultsViewProps) {
   return (
     <>
       <ViewHeader
-        title="Results"
-        subtitle="Live analytics from post-bridge for everything you've published."
+        title={t('Results', '数据')}
+        subtitle={t("Live analytics from post-bridge for everything you've published.", '从 post-bridge 同步已发布内容的数据。')}
         right={
           configured && (
             <button
@@ -57,7 +59,7 @@ export function ResultsView({ configured }: ResultsViewProps) {
               className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-line text-[12px] text-ink-4 hover:text-ink hover:border-line-2 disabled:opacity-50"
             >
               <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-              {refreshing ? 'Syncing…' : 'Refresh'}
+              {refreshing ? t('Syncing…', '同步中…') : t('Refresh', '刷新')}
             </button>
           )
         }
@@ -66,9 +68,9 @@ export function ResultsView({ configured }: ResultsViewProps) {
         {results && results.length > 0 && (
           <div className="px-8 py-4 border-b border-line bg-surface">
             <div className="max-w-4xl mx-auto grid grid-cols-3 gap-6">
-              <Stat label="Total views" value={formatNumber(totalViews)} />
-              <Stat label="Total likes" value={formatNumber(totalLikes)} />
-              <Stat label="Posts tracked" value={String(results.length)} />
+              <Stat label={t('Total views', '总播放')} value={formatNumber(totalViews)} />
+              <Stat label={t('Total likes', '总点赞')} value={formatNumber(totalLikes)} />
+              <Stat label={t('Posts tracked', '追踪内容数')} value={String(results.length)} />
             </div>
           </div>
         )}
@@ -76,13 +78,13 @@ export function ResultsView({ configured }: ResultsViewProps) {
         <div className="p-8">
           <div className="max-w-4xl mx-auto flex flex-col gap-3">
             {!configured ? (
-              <Empty text="Add your post-bridge API key in Settings to see analytics." />
+              <Empty text={t('Add your post-bridge API key in Settings to see analytics.', '在设置里添加 post-bridge API Key 后查看数据。')} />
             ) : error ? (
               <Empty text={error} />
             ) : results === null ? (
               <Loading />
             ) : results.length === 0 ? (
-              <Empty text="No analytics yet. Once your posts go live, post-bridge syncs their performance here." />
+              <Empty text={t('No analytics yet. Once your posts go live, post-bridge syncs their performance here.', '还没有数据。内容发布后，post-bridge 会在这里同步表现。')} />
             ) : (
               results.map((r) => <ResultCard key={r.id} result={r} />)
             )}
@@ -152,9 +154,10 @@ function Metric({ icon: Icon, value }: { icon: typeof Eye; value: string }) {
 }
 
 function Loading() {
+  const t = useT();
   return (
     <div className="flex items-center justify-center py-16 text-ink-5 text-[13px] gap-2">
-      <Loader2 size={14} className="animate-spin" /> Loading analytics…
+      <Loader2 size={14} className="animate-spin" /> {t('Loading analytics…', '加载数据…')}
     </div>
   );
 }
