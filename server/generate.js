@@ -18,7 +18,10 @@ const PALETTE = [
 ]
 
 function buildPrompt(brain, count) {
-  return `You write short-form social media carousel slideshows (TikTok/Instagram).
+  return `You write native TikTok/Instagram carousel slideshows for a product-backed account.
+
+Your job is NOT to write ads. Your job is to write useful, specific, save-worthy content
+that the target audience would read even if they never install the product.
 
 Account context:
 - Niche: ${brain.niche || '(unspecified)'}
@@ -28,20 +31,64 @@ Account context:
 What's working for this account (style memory — respect this closely):
 ${brain.styleMemory || '(none yet — use proven short-form patterns)'}
 
+Core rules:
+- Do not open with the product, brand, app name, or a generic benefit.
+- Slide 1 must be a concrete pain, mistake, myth, warning, contradiction, or surprising observation.
+- Make slide 1 specific enough that one audience segment feels called out.
+- Each slideshow must focus on ONE narrow situation, not the whole product category.
+- The first 80% should teach, explain, warn, or reframe. The product can appear only near the end as a soft helper.
+- Avoid generic filler like "take control", "stay organized", "be productive", "plan better", "check the weather", "make life easier", unless made concrete.
+- Avoid corporate marketing tone, feature lists, and hard CTAs.
+- Write like a TikTok-native creator: short, plain, slightly opinionated, emotionally accurate.
+- Every slideshow should be useful without the app, but naturally make the app feel relevant.
+- Do not repeat the same angle across the batch.
+
+Use varied angles across the batch:
+- common mistake
+- myth / misconception
+- "why this happens"
+- tiny fix
+- checklist
+- before / after
+- contrarian take
+- situation-specific warning
+- one overlooked detail
+
+Good hook examples by pattern, NOT to copy:
+- "Your task list is why you procrastinate"
+- "\\"Work on project\\" is not a task"
+- "Don't dress for the high today"
+- "Rain chance doesn't mean what you think"
+- "The temperature is lying to you"
+- "Your brain rejects vague tasks"
+
 Write ${count} distinct slideshows. Respond with a JSON object of this exact shape:
 {
   "slideshows": [
     {
-      "hook": "the first slide — a scroll-stopping line, max ~8 words",
-      "slides": ["the hook again as slide 1", "slide 2", "...5-6 lines total, each max ~8 words, last is a CTA like 'Save this'"],
-      "caption": "the post caption with 1-2 emoji",
-      "hashtags": ["three", "relevant", "hashtags"],
-      "rationale": "one sentence on why this should perform, tied to the style memory"
+      "hook": "slide 1 text — concrete, scroll-stopping, max 9 words",
+      "slides": [
+        "same hook again as slide 1",
+        "specific mistake or tension",
+        "why it happens",
+        "tiny practical fix",
+        "example or next step",
+        "soft CTA / save-worthy closing"
+      ],
+      "caption": "short native caption, no hard sell, 0-1 emoji",
+      "hashtags": ["three", "specific", "hashtags"],
+      "rationale": "one sentence explaining the audience pain, angle, and why it should earn retention"
     }
   ]
 }
 
-Keep them on-brand, varied, and genuinely good. Do not write generic filler. Return ONLY the JSON object.`
+Quality bar:
+- If a slide could fit any app in any category, rewrite it.
+- If the hook sounds like an ad headline, rewrite it.
+- If the hook lacks a specific user situation, rewrite it.
+- If the product mention appears before slide 5, rewrite it.
+
+Return ONLY the JSON object.`
 }
 
 // Generate in small batches so big counts don't overflow the model's output /
