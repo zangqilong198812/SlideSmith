@@ -3,6 +3,7 @@ export type ViewKey = 'queue' | 'library' | 'schedule' | 'results' | 'brain' | '
 export interface Slide {
   id: string;
   text: string;
+  layout?: 'classic' | 'notes';
   // Generated slides have no source image — they're rendered from text over a
   // gradient. `imageUrl` is kept optional for backwards-compat / future use.
   imageUrl?: string;
@@ -11,6 +12,8 @@ export interface Slide {
   bgFrom?: string;
   bgTo?: string;
 }
+
+export type GenerateStyle = 'classic' | 'notes';
 
 export interface Slideshow {
   id: string;

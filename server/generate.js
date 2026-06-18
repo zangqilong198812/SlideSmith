@@ -17,7 +17,7 @@ const PALETTE = [
   ['#26120a', '#1a0c06'],
 ]
 
-function buildPrompt(brain, count) {
+function buildClassicPrompt(brain, count) {
   return `You write native TikTok/Instagram carousel slideshows for a product-backed account.
 
 Your job is NOT to write ads. Your job is to write useful, specific, save-worthy content
@@ -91,12 +91,94 @@ Quality bar:
 Return ONLY the JSON object.`
 }
 
+function buildNotesPrompt(brain, count) {
+  return `You write native TikTok/Instagram carousel slideshows in a "human photo + Notes screenshot" style.
+
+This style is inspired by creator-growth carousel accounts where slide 1 feels like a personal post,
+then the next slides look like a Notes app screenshot with practical lessons. The result must feel
+creator-native, not like an app advertisement.
+
+Account context:
+- Niche: ${brain.niche || '(unspecified)'}
+- App / brand: ${brain.appName || '(unspecified)'} — ${brain.appDescription || ''}
+- Audience: ${brain.audience || '(unspecified)'}
+
+What's working for this account (style memory — respect this closely):
+${brain.styleMemory || '(none yet — use proven short-form patterns)'}
+
+Core rules:
+- Slide 1 is a first-person hook over a human/lifestyle background. It should sound like lived experience.
+- Slide 1 must NOT mention the product, brand, app name, or a generic benefit.
+- Use hooks like: "i stopped...", "after 3 months...", "i finally realized...", "this fixed...", "i was doing this wrong..."
+- Notes slides should read like a screenshot from someone's Notes app: short title, blank lines, numbered or dashed observations.
+- The notes must teach something useful even if the reader never installs the app.
+- Mention the app only near the end, as a soft helper or optional system. No hard CTA.
+- Keep the whole slideshow narrow: one concrete situation, mistake, or realization.
+- Avoid polished marketing language, feature lists, and generic motivational advice.
+- Do not repeat the same angle across the batch.
+
+Good hook patterns by category, NOT to copy:
+- productivity: "i stopped rewriting my todo list every night"
+- productivity: "my tasks were vague, not hard"
+- weather: "i stopped dressing for the high temperature"
+- weather: "rain chance was tricking me"
+- creator tools: "i finally got out of 300 views jail"
+
+Write ${count} distinct slideshows. Respond with a JSON object of this exact shape:
+{
+  "slideshows": [
+    {
+      "hook": "same as slide 1, lowercase first-person, max 11 words",
+      "slides": [
+        {
+          "layout": "classic",
+          "text": "same hook again as slide 1"
+        },
+        {
+          "layout": "notes",
+          "text": "notes title\\n\\n1. specific lesson\\n2. specific lesson\\n3. specific lesson"
+        },
+        {
+          "layout": "notes",
+          "text": "what changed\\n\\n- concrete before\\n- concrete after\\n- soft app mention only if natural"
+        }
+      ],
+      "caption": "short native caption, first-person or conversational, no hard sell, 0-1 emoji",
+      "hashtags": ["three", "specific", "hashtags"],
+      "rationale": "one sentence explaining the audience pain, angle, and why the notes format should earn retention"
+    }
+  ]
+}
+
+Quality bar:
+- If slide 1 sounds like an ad headline, rewrite it.
+- If the notes could fit any app in any category, rewrite them.
+- If the product appears before the final notes slide, rewrite it.
+- If a note line is longer than 11 words, shorten it.
+
+Return ONLY the JSON object.`
+}
+
+function buildPrompt(brain, count, style) {
+  return style === 'notes' ? buildNotesPrompt(brain, count) : buildClassicPrompt(brain, count)
+}
+
 // Generate in small batches so big counts don't overflow the model's output /
 // truncate the JSON. Each call asks for a handful; we loop until we hit `count`.
 const BATCH = 6
 
-export async function generateSlideshows({ apiKey, baseUrl, model, brain, count = 4 }) {
-  log.start(`Generating ${count} slideshow${count === 1 ? '' : 's'} with ${model}`)
+function normalizeSlide(rawSlide, fallbackLayout = 'classic') {
+  if (typeof rawSlide === 'string') {
+    return { text: rawSlide, layout: fallbackLayout }
+  }
+  return {
+    text: String(rawSlide?.text || ''),
+    layout: rawSlide?.layout === 'notes' ? 'notes' : fallbackLayout,
+  }
+}
+
+export async function generateSlideshows({ apiKey, baseUrl, model, brain, count = 4, style = 'classic' }) {
+  log.start(`Generating ${count} ${style} slideshow${count === 1 ? '' : 's'} with ${model}`)
   if (brain?.niche) log.info(`niche: ${brain.niche}${brain.appName ? ` · ${brain.appName}` : ''}`)
   const raw = []
   let safety = 0
@@ -104,7 +186,7 @@ export async function generateSlideshows({ apiKey, baseUrl, model, brain, count 
     safety++
     const n = Math.min(BATCH, count - raw.length)
     log.step(`asking model for ${n} more (${raw.length}/${count} so far)…`)
-    const parsed = await chatJSON({ apiKey, baseUrl, model, prompt: buildPrompt(brain, n) })
+    const parsed = await chatJSON({ apiKey, baseUrl, model, prompt: buildPrompt(brain, n, style) })
     const batch = parsed.slideshows || []
     if (!batch.length) {
       log.warn('model returned no slideshows — stopping early')
@@ -118,19 +200,24 @@ export async function generateSlideshows({ apiKey, baseUrl, model, brain, count 
   const stamp = Date.now()
   return raw.slice(0, count).map((s, i) => {
     const [from, to] = PALETTE[i % PALETTE.length]
+    const firstSlide = normalizeSlide(s.slides?.[0] || '', 'classic')
     return {
       id: `q-${stamp}-${i}`,
-      hook: s.hook || (s.slides && s.slides[0]) || '',
+      hook: s.hook || firstSlide.text || '',
       caption: s.caption || '',
       hashtags: s.hashtags || [],
       rationale: s.rationale || '',
       createdAt: new Date(stamp).toISOString(),
-      slides: (s.slides || []).map((text, j) => ({
-        id: `slide-${stamp}-${i}-${j}`,
-        text,
-        bgFrom: from,
-        bgTo: to,
-      })),
+      slides: (s.slides || []).map((rawSlide, j) => {
+        const slide = normalizeSlide(rawSlide, style === 'notes' && j > 0 ? 'notes' : 'classic')
+        return {
+          id: `slide-${stamp}-${i}-${j}`,
+          text: slide.text,
+          layout: slide.layout,
+          bgFrom: from,
+          bgTo: to,
+        }
+      }),
     }
   })
 }

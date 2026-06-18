@@ -12,7 +12,7 @@ import { BrainView } from './views/BrainView';
 import { SettingsView } from './views/SettingsView';
 import { renderSlideshow } from './lib/render';
 import * as api from './lib/api';
-import type { AppConfig, Project, Slideshow, Slide, SocialAccount, BrainState, ViewKey } from './types';
+import type { AppConfig, Project, Slideshow, Slide, SocialAccount, BrainState, ViewKey, GenerateStyle } from './types';
 
 export default function App() {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -56,11 +56,11 @@ export default function App() {
     })();
   }, [loadAccounts]);
 
-  const generate = async (count: number, packs: string[]) => {
+  const generate = async (count: number, packs: string[], style: GenerateStyle) => {
     setError(null);
     setGenerating(true);
     try {
-      await api.generate(count, packs);
+      await api.generate(count, packs, style);
       setQueue(await api.getQueue());
       setGenerateOpen(false);
     } catch (e) {

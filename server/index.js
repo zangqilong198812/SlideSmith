@@ -110,7 +110,8 @@ app.post('/api/generate', h(async (req, res) => {
   const { keys, aiBaseUrl, model } = getConfig()
   const project = getActiveProject()
   const count = Math.min(Math.max(Math.round(Number(req.body?.count) || 4), 1), 100)
-  const slideshows = await generateSlideshows({ apiKey: keys.openrouter, baseUrl: aiBaseUrl, model, brain: project.brain, count })
+  const style = req.body?.style === 'notes' ? 'notes' : 'classic'
+  const slideshows = await generateSlideshows({ apiKey: keys.openrouter, baseUrl: aiBaseUrl, model, brain: project.brain, count, style })
 
   // Auto-assign background images. A per-batch `packs` override (from the
   // Generate modal) wins; otherwise fall back to the project's saved packs.
@@ -122,6 +123,7 @@ app.post('/api/generate', h(async (req, res) => {
     for (const show of slideshows) {
       const used = new Set()
       for (const slide of show.slides) {
+        if (slide.layout === 'notes') continue
         // Prefer an unused image within this slideshow for visual variety.
         const fresh = pool.filter((i) => !used.has(i.url))
         const pick = (fresh.length ? fresh : pool)[Math.floor(Math.random() * (fresh.length || pool.length))]

@@ -57,6 +57,79 @@ function drawContain(ctx: CanvasRenderingContext2D, img: HTMLImageElement) {
   ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
 }
 
+function drawRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawNotesSlide(ctx: CanvasRenderingContext2D, text: string) {
+  ctx.fillStyle = '#f8f5eb';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#f2eddf';
+  ctx.fillRect(0, 0, W, 164);
+  ctx.fillStyle = 'rgba(0,0,0,0.1)';
+  ctx.fillRect(0, 164, W, 2);
+
+  const dotY = 82;
+  [
+    ['#ff5f57', 72],
+    ['#ffbd2e', 112],
+    ['#28c840', 152],
+  ].forEach(([color, x]) => {
+    ctx.fillStyle = String(color);
+    ctx.beginPath();
+    ctx.arc(Number(x), dotY, 12, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.font = '700 48px Inter, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillText('Notes', W / 2, 82);
+
+  const [title, ...bodyParts] = text.split('\n');
+  const body = bodyParts.join('\n').trim();
+  const left = 76;
+  const maxWidth = W - left * 2;
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#191919';
+  ctx.lineJoin = 'round';
+
+  ctx.font = '800 82px Inter, sans-serif';
+  const titleLines = wrap(ctx, title || 'note to self', maxWidth);
+  let y = 268;
+  for (const line of titleLines.slice(0, 4)) {
+    ctx.fillText(line, left, y);
+    y += 90;
+  }
+
+  y += 54;
+  ctx.font = '600 56px Inter, sans-serif';
+  const bodyLines = wrap(ctx, body, maxWidth);
+  for (const line of bodyLines.slice(0, 18)) {
+    if (!line) {
+      y += 34;
+      continue;
+    }
+    ctx.fillText(line, left, y);
+    y += 78;
+  }
+
+  drawRoundedRect(ctx, 50, 238, W - 100, Math.min(1180, Math.max(520, y - 220)), 36);
+  ctx.strokeStyle = 'rgba(0,0,0,0.045)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
 export async function renderSlide(slide: Slide): Promise<string> {
   // Make sure the web font is ready, otherwise the first render uses a fallback.
   if (document.fonts?.ready) await document.fonts.ready;
@@ -65,6 +138,11 @@ export async function renderSlide(slide: Slide): Promise<string> {
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d')!;
+
+  if (slide.layout === 'notes') {
+    drawNotesSlide(ctx, slide.text || '');
+    return canvas.toDataURL('image/png');
+  }
 
   if (slide.imageUrl) {
     // Image background (same-origin: bundled at /library/… or scraped via /api/…).

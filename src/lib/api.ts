@@ -9,6 +9,7 @@ import type {
   ScheduledPost,
   PostResult,
   ModelOption,
+  GenerateStyle,
   LibraryImage,
   LibraryPack,
 } from '../types';
@@ -66,8 +67,8 @@ export const getModels = () => req<ModelOption[]>('/models');
 
 export const getQueue = () => req<Slideshow[]>('/queue');
 
-export const generate = (count = 4, packs?: string[]) =>
-  req<Slideshow[]>('/generate', { method: 'POST', body: JSON.stringify({ count, packs }) });
+export const generate = (count = 4, packs?: string[], style: GenerateStyle = 'classic') =>
+  req<Slideshow[]>('/generate', { method: 'POST', body: JSON.stringify({ count, packs, style }) });
 
 export const removeFromQueue = (id: string) =>
   req<Slideshow[]>(`/queue/${id}`, { method: 'DELETE' });

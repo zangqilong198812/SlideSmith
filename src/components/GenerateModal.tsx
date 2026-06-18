@@ -3,12 +3,13 @@ import { X, Loader2, Sparkles } from 'lucide-react';
 import { Button } from './Button';
 import { PackPicker } from './PackPicker';
 import { useT } from '../i18n';
+import type { GenerateStyle } from '../types';
 
 interface GenerateModalProps {
   defaultPacks: string[];
   generating: boolean;
   onClose: () => void;
-  onGenerate: (count: number, packs: string[]) => void;
+  onGenerate: (count: number, packs: string[], style: GenerateStyle) => void;
 }
 
 const COUNT_OPTIONS = [1, 3, 5, 10];
@@ -17,6 +18,7 @@ export function GenerateModal({ defaultPacks, generating, onClose, onGenerate }:
   const t = useT();
   const [count, setCount] = useState(3);
   const [packs, setPacks] = useState<string[]>(defaultPacks);
+  const [style, setStyle] = useState<GenerateStyle>('notes');
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={generating ? undefined : onClose}>
@@ -58,6 +60,36 @@ export function GenerateModal({ defaultPacks, generating, onClose, onGenerate }:
             <p className="text-[11px] text-ink-6 mt-1">{t('1–100. Large batches take a while — they generate in chunks.', '1–100。大批量会分块生成，需要一些时间。')}</p>
           </div>
 
+          <div>
+            <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">{t('Style', '内容风格')}</label>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                {
+                  key: 'notes' as const,
+                  title: t('Notes style', 'Notes 风格'),
+                  desc: t('Human hook + Notes screenshot', '真人首图 + 笔记截图'),
+                },
+                {
+                  key: 'classic' as const,
+                  title: t('Classic slider', '经典轮播'),
+                  desc: t('Large text on every slide', '每页大字叠图'),
+                },
+              ].map((option) => (
+                <button
+                  key={option.key}
+                  onClick={() => setStyle(option.key)}
+                  disabled={generating}
+                  className={`text-left rounded-lg border px-3 py-2 transition-colors disabled:opacity-50 ${
+                    style === option.key ? 'border-ink bg-ink text-bg' : 'border-line bg-card text-ink hover:border-line-2'
+                  }`}
+                >
+                  <span className="block text-[13px] font-semibold">{option.title}</span>
+                  <span className={`block text-[11px] mt-0.5 ${style === option.key ? 'text-bg/70' : 'text-ink-6'}`}>{option.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Packs */}
           <div>
             <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">{t('Background packs', '背景素材包')}</label>
@@ -70,7 +102,7 @@ export function GenerateModal({ defaultPacks, generating, onClose, onGenerate }:
           <Button
             variant="primary"
             icon={generating ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-            onClick={() => onGenerate(count, packs)}
+            onClick={() => onGenerate(count, packs, style)}
             disabled={generating}
           >
             {generating ? t('Generating…', '生成中…') : t(`Generate ${count}`, `生成 ${count} 条`)}
