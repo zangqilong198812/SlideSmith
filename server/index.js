@@ -230,7 +230,7 @@ app.post('/api/postiz/publish', h(async (req, res) => {
   const post = await createPostizPost(keys.postiz, postizBaseUrl, buildTikTokUploadPayload({
     integrationId,
     caption,
-    imagePaths: uploaded,
+    media: uploaded,
     title,
   }))
 

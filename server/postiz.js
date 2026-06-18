@@ -18,6 +18,20 @@ async function readBody(res) {
   }
 }
 
+function messageFromBody(body) {
+  if (!body) return ''
+  if (typeof body === 'string') return body
+  if (Array.isArray(body)) return body.map(messageFromBody).filter(Boolean).join('; ')
+  if (typeof body === 'object') {
+    if (typeof body.message === 'string') return body.message
+    if (typeof body.error === 'string') return body.error
+    if (body.error) return messageFromBody(body.error)
+    if (body.errors) return messageFromBody(body.errors)
+    return JSON.stringify(body)
+  }
+  return String(body)
+}
+
 async function postiz(apiKey, base, path, init = {}) {
   const res = await fetch(`${baseUrl(base)}${path}`, {
     ...init,
@@ -25,8 +39,8 @@ async function postiz(apiKey, base, path, init = {}) {
   })
   const body = await readBody(res)
   if (!res.ok) {
-    const msg = body?.message || body?.error || body?.errors || (typeof body === 'string' ? body : '') || res.statusText
-    throw new Error(`Postiz ${res.status}: ${Array.isArray(msg) ? msg.join('; ') : msg}`)
+    const msg = messageFromBody(body) || res.statusText
+    throw new Error(`Postiz ${res.status}: ${msg}`)
   }
   return body
 }
@@ -58,7 +72,10 @@ export async function uploadPostizMedia(apiKey, base, { buffer, name, mimeType }
     body: form,
   })
   if (!body?.path) throw new Error('Postiz upload did not return a media path.')
-  return body
+  return {
+    id: body.id ? String(body.id) : undefined,
+    path: String(body.path),
+  }
 }
 
 export async function createPostizPost(apiKey, base, payload) {
@@ -69,10 +86,10 @@ export async function createPostizPost(apiKey, base, payload) {
   })
 }
 
-export function buildTikTokUploadPayload({ integrationId, caption, imagePaths, title, date }) {
+export function buildTikTokUploadPayload({ integrationId, caption, media, title, date }) {
   if (!integrationId) throw new Error('Pick a Postiz integration in Settings.')
-  if (!imagePaths?.length) throw new Error('No rendered slides to upload.')
-  if (imagePaths.length > 35) throw new Error('TikTok photo posts support at most 35 images.')
+  if (!media?.length) throw new Error('No rendered slides to upload.')
+  if (media.length > 35) throw new Error('TikTok photo posts support at most 35 images.')
 
   return {
     type: 'now',
@@ -85,7 +102,10 @@ export function buildTikTokUploadPayload({ integrationId, caption, imagePaths, t
         value: [
           {
             content: caption,
-            image: imagePaths.map((path) => ({ path })),
+            image: media.map((item) => ({
+              ...(item.id ? { id: item.id } : {}),
+              path: item.path,
+            })),
           },
         ],
         settings: {

@@ -38,6 +38,7 @@ export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, de
   const [lastScheduledMs, setLastScheduledMs] = useState<number | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [doneCount, setDoneCount] = useState<number | null>(null);
+  const [failures, setFailures] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   // Default the start time to AFTER the last thing already scheduled in post-bridge.
@@ -85,6 +86,7 @@ export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, de
     const startMs = new Date(startLocal).getTime();
     const stepMs = hours * 3600_000;
     setProgress({ done: 0, total: slideshows.length });
+    setFailures([]);
 
     // Process several slideshows at once instead of one-at-a-time — each is an
     // independent render + upload, so a small pool cuts wall-clock dramatically
@@ -97,6 +99,7 @@ export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, de
     let ok = 0;
     let done = 0;
     let next = 0;
+    const failed: string[] = [];
 
     const worker = async () => {
       while (next < slideshows.length) {
@@ -125,6 +128,8 @@ export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, de
           }
           ok++;
         } catch (e) {
+          const message = e instanceof Error ? e.message : String(e);
+          failed.push(`${show.hook || show.id}: ${message}`);
           console.error('[bulk] failed for', show.id, e);
         }
         setProgress({ done: ++done, total: slideshows.length });
@@ -132,6 +137,7 @@ export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, de
     };
 
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, slideshows.length) }, worker));
+    setFailures(failed);
     setDoneCount(ok);
   };
 
@@ -154,18 +160,33 @@ export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, de
                 : t(`${doneCount} of ${slideshows.length} ${mode === 'schedule' ? 'scheduled' : 'saved as drafts'}`, `${slideshows.length} 条中已完成 ${doneCount} 条${mode === 'schedule' ? '排程' : '草稿'}`)}
             </p>
             <p className="text-[12px] text-ink-5">
-              {publisher === 'postiz'
+              {publisher === 'postiz' && doneCount === 0
+                ? t('Nothing reached Postiz. Check the failure details below.', '没有任何内容成功到达 Postiz。请看下面的失败原因。')
+                : publisher === 'postiz'
                 ? t('Open TikTok inbox on your phone to finish and publish manually.', '打开手机 TikTok inbox 完成编辑并手动发布。')
                 : mode === 'schedule' ? t('post-bridge will publish them at their times.', 'post-bridge 会按时间发布。') : t('Find them in your post-bridge drafts.', '可在 post-bridge 草稿中查看。')}
             </p>
-            <a
-              href={publisher === 'postiz' ? 'https://www.tiktok.com/messages?lang=en' : mode === 'schedule' ? PB_SCHEDULED_URL : PB_DRAFTS_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center justify-center gap-1.5 h-9 px-4 mt-2 rounded-lg bg-ink text-bg text-[13px] font-medium hover:opacity-90"
-            >
-              {publisher === 'postiz' ? t('Open TikTok inbox', '打开 TikTok inbox') : t('View on post-bridge', '在 post-bridge 查看')} <ExternalLink size={13} />
-            </a>
+            {failures.length > 0 && (
+              <div className="mt-3 text-left rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                <p className="text-[12px] font-medium text-red-700">{t('Failed items', '失败原因')}</p>
+                <ul className="mt-1 space-y-1">
+                  {failures.slice(0, 4).map((failure, index) => (
+                    <li key={index} className="text-[11px] text-red-700 leading-snug break-words">{failure}</li>
+                  ))}
+                </ul>
+                {failures.length > 4 && <p className="text-[11px] text-red-600 mt-1">{t(`+${failures.length - 4} more`, `还有 ${failures.length - 4} 条`)}</p>}
+              </div>
+            )}
+            {doneCount > 0 && (
+              <a
+                href={publisher === 'postiz' ? 'https://www.tiktok.com/messages?lang=en' : mode === 'schedule' ? PB_SCHEDULED_URL : PB_DRAFTS_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center gap-1.5 h-9 px-4 mt-2 rounded-lg bg-ink text-bg text-[13px] font-medium hover:opacity-90"
+              >
+                {publisher === 'postiz' ? t('Open TikTok inbox', '打开 TikTok inbox') : t('View on post-bridge', '在 post-bridge 查看')} <ExternalLink size={13} />
+              </a>
+            )}
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
