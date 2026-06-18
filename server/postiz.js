@@ -23,6 +23,7 @@ function messageFromBody(body) {
   if (typeof body === 'string') return body
   if (Array.isArray(body)) return body.map(messageFromBody).filter(Boolean).join('; ')
   if (typeof body === 'object') {
+    if (typeof body.msg === 'string') return body.msg
     if (typeof body.message === 'string') return body.message
     if (typeof body.error === 'string') return body.error
     if (body.error) return messageFromBody(body.error)
@@ -72,8 +73,9 @@ export async function uploadPostizMedia(apiKey, base, { buffer, name, mimeType }
     body: form,
   })
   if (!body?.path) throw new Error('Postiz upload did not return a media path.')
+  if (!body?.id) throw new Error('Postiz upload did not return a media id.')
   return {
-    id: body.id ? String(body.id) : undefined,
+    id: String(body.id),
     path: String(body.path),
   }
 }
@@ -92,7 +94,8 @@ export function buildTikTokUploadPayload({ integrationId, caption, media, title,
   if (media.length > 35) throw new Error('TikTok photo posts support at most 35 images.')
 
   return {
-    type: 'now',
+    type: 'schedule',
+    creationMethod: 'CLI',
     date: date || new Date(Date.now() + 60_000).toISOString(),
     shortLink: false,
     tags: [],
