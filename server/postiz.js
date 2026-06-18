@@ -73,9 +73,7 @@ export async function uploadPostizMedia(apiKey, base, { buffer, name, mimeType }
     body: form,
   })
   if (!body?.path) throw new Error('Postiz upload did not return a media path.')
-  if (!body?.id) throw new Error('Postiz upload did not return a media id.')
   return {
-    id: String(body.id),
     path: String(body.path),
   }
 }
@@ -106,7 +104,7 @@ export function buildTikTokUploadPayload({ integrationId, caption, media, title,
           {
             content: caption,
             image: media.map((item) => ({
-              ...(item.id ? { id: item.id } : {}),
+              id: Math.random().toString(36).substring(7),
               path: item.path,
             })),
           },
