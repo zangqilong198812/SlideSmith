@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { X, Loader2, CalendarClock, Info, CheckCircle2, ExternalLink } from 'lucide-react';
-import type { Slideshow, SocialAccount } from '../types';
+import type { Slideshow, SocialAccount, PostizIntegration } from '../types';
 import { getScheduledPosts } from '../lib/api';
 import { Button } from './Button';
 import { SlidePreview } from './SlidePreview';
@@ -23,18 +23,24 @@ function toLocalInput(d: Date): string {
 interface ScheduleModalProps {
   slideshow: Slideshow;
   accounts: SocialAccount[];
-  defaults: { socialAccountIds: number[]; mode: 'draft' | 'schedule' };
+  postizIntegrations: PostizIntegration[];
+  defaults: { socialAccountIds: number[]; mode: 'draft' | 'schedule'; postizIntegrationId?: string };
   onClose: () => void;
   onConfirm: (opts: {
+    publisher: 'postbridge' | 'postiz';
     socialAccounts: number[];
+    postizIntegrationId?: string;
     mode: 'draft' | 'schedule';
     scheduledAt: string | null;
   }) => Promise<void>;
 }
 
-export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfirm }: ScheduleModalProps) {
+export function ScheduleModal({ slideshow, accounts, postizIntegrations, defaults, onClose, onConfirm }: ScheduleModalProps) {
   const t = useT();
+  const tiktokIntegrations = postizIntegrations.filter((integration) => integration.providerIdentifier.toLowerCase() === 'tiktok' && !integration.disabled);
+  const [publisher, setPublisher] = useState<'postiz' | 'postbridge'>(defaults.postizIntegrationId ? 'postiz' : 'postbridge');
   const [selected, setSelected] = useState<number[]>(defaults.socialAccountIds);
+  const [postizIntegrationId, setPostizIntegrationId] = useState(defaults.postizIntegrationId || tiktokIntegrations[0]?.id || '');
   const [mode, setMode] = useState<'draft' | 'schedule'>(defaults.mode);
   // Seed with now + gap immediately so the field is never blank; refine to
   // "after the last scheduled post" once post-bridge responds.
@@ -44,7 +50,7 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Which mode succeeded, or null while still on the form. Drives the success screen.
-  const [doneMode, setDoneMode] = useState<'draft' | 'schedule' | null>(null);
+  const [doneMode, setDoneMode] = useState<'draft' | 'schedule' | 'postiz' | null>(null);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
   useEffect(() => {
@@ -59,22 +65,29 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (!postizIntegrationId && tiktokIntegrations[0]?.id) setPostizIntegrationId(tiktokIntegrations[0].id);
+  }, [postizIntegrationId, tiktokIntegrations]);
+
   const toggle = (id: number) =>
     setSelected((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   const confirm = async () => {
     setError(null);
-    if (!selected.length) return setError(t('Pick at least one account.', '至少选择一个账号。'));
-    if (mode === 'schedule' && !when) return setError(t('Pick a date & time, or save as a draft.', '选择发布时间，或保存为草稿。'));
+    if (publisher === 'postiz' && !postizIntegrationId) return setError(t('Pick a Postiz TikTok integration in Settings first.', '请先在设置里选择 Postiz TikTok integration。'));
+    if (publisher === 'postbridge' && !selected.length) return setError(t('Pick at least one account.', '至少选择一个账号。'));
+    if (publisher === 'postbridge' && mode === 'schedule' && !when) return setError(t('Pick a date & time, or save as a draft.', '选择发布时间，或保存为草稿。'));
     setBusy(true);
     try {
       await onConfirm({
+        publisher,
         socialAccounts: selected,
+        postizIntegrationId,
         mode,
-        scheduledAt: mode === 'schedule' ? new Date(when).toISOString() : null,
+        scheduledAt: publisher === 'postbridge' && mode === 'schedule' ? new Date(when).toISOString() : null,
       });
       setBusy(false);
-      setDoneMode(mode); // show the success screen instead of closing
+      setDoneMode(publisher === 'postiz' ? 'postiz' : mode); // show the success screen instead of closing
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -83,6 +96,7 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
 
   if (doneMode) {
     const scheduled = doneMode === 'schedule';
+    const postizDone = doneMode === 'postiz';
     return (
       <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
         <div
@@ -91,21 +105,23 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
         >
           <CheckCircle2 size={32} className="text-emerald-600 mx-auto" />
           <h2 className="text-[16px] font-semibold text-ink mt-3">
-            {scheduled ? t('Scheduled', '已排程') : t('Saved as draft', '已保存为草稿')}
+            {postizDone ? t('Sent to Postiz', '已发送到 Postiz') : scheduled ? t('Scheduled', '已排程') : t('Saved as draft', '已保存为草稿')}
           </h2>
           <p className="text-[13px] text-ink-5 mt-1.5 leading-snug">
-            {scheduled
+            {postizDone
+              ? t('Postiz will send it to TikTok inbox. Open TikTok on your phone to finish editing and publish manually.', 'Postiz 会发送到 TikTok inbox。打开手机 TikTok 继续编辑并手动发布。')
+              : scheduled
               ? t('post-bridge will publish it at the time you picked.', 'post-bridge 会在你选择的时间发布。')
               : t('It’s waiting in your post-bridge drafts to post by hand.', '它已经在 post-bridge 草稿里，等待你手动发布。')}
           </p>
           <div className="flex flex-col gap-2 mt-5">
             <a
-              href={scheduled ? PB_SCHEDULED_URL : PB_DRAFTS_URL}
+              href={postizDone ? 'https://www.tiktok.com/messages?lang=en' : scheduled ? PB_SCHEDULED_URL : PB_DRAFTS_URL}
               target="_blank"
               rel="noreferrer"
               className="flex items-center justify-center gap-1.5 h-9 rounded-lg bg-ink text-bg text-[13px] font-medium hover:opacity-90"
             >
-              {t('View on post-bridge', '在 post-bridge 查看')} <ExternalLink size={13} />
+              {postizDone ? t('Open TikTok inbox', '打开 TikTok inbox') : t('View on post-bridge', '在 post-bridge 查看')} <ExternalLink size={13} />
             </a>
             <Button variant="secondary" onClick={onClose}>
               {t('Done', '完成')}
@@ -140,8 +156,70 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
             <p className="text-[12px] text-ink-4 mt-2 line-clamp-2">{slideshow.caption}</p>
           </div>
 
-          {/* Accounts */}
           <div>
+            <label className="text-[11px] text-ink-5 mb-1.5 block uppercase tracking-widest font-semibold">
+              {t('Publisher', '发布通道')}
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setPublisher('postiz')}
+                className={`text-left rounded-lg border px-3 py-2 transition-colors ${
+                  publisher === 'postiz' ? 'border-ink bg-ink text-bg' : 'border-line bg-card text-ink hover:border-line-2'
+                }`}
+              >
+                <span className="block text-[13px] font-semibold">Postiz</span>
+                <span className={`block text-[11px] mt-0.5 ${publisher === 'postiz' ? 'text-bg/70' : 'text-ink-6'}`}>
+                  {t('TikTok inbox upload', 'TikTok inbox 上传')}
+                </span>
+              </button>
+              <button
+                onClick={() => setPublisher('postbridge')}
+                className={`text-left rounded-lg border px-3 py-2 transition-colors ${
+                  publisher === 'postbridge' ? 'border-ink bg-ink text-bg' : 'border-line bg-card text-ink hover:border-line-2'
+                }`}
+              >
+                <span className="block text-[13px] font-semibold">Postbridge</span>
+                <span className={`block text-[11px] mt-0.5 ${publisher === 'postbridge' ? 'text-bg/70' : 'text-ink-6'}`}>
+                  {t('Draft or schedule', '草稿或排程')}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {publisher === 'postiz' && (
+            <div>
+              <label className="text-[11px] text-ink-5 mb-1.5 block uppercase tracking-widest font-semibold">
+                {t('Postiz TikTok integration', 'Postiz TikTok integration')}
+              </label>
+              {tiktokIntegrations.length === 0 ? (
+                <p className="text-[12px] text-ink-5">
+                  {t('No TikTok integration loaded from Postiz. Add your Postiz key in Settings and connect TikTok inside Postiz.', '没有从 Postiz 加载到 TikTok integration。请在设置里添加 Postiz Key，并在 Postiz 里连接 TikTok。')}
+                </p>
+              ) : (
+                <select
+                  value={postizIntegrationId}
+                  onChange={(e) => setPostizIntegrationId(e.target.value)}
+                  className="w-full h-9 bg-card border border-line rounded-lg px-3 text-[13px] text-ink outline-none focus:border-ink-7 focus:ring-2 focus:ring-ink/10"
+                >
+                  <option value="">{t('Select TikTok', '选择 TikTok')}</option>
+                  {tiktokIntegrations.map((integration) => (
+                    <option key={integration.id} value={integration.id}>
+                      {integration.name || integration.profile || integration.id}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <div className="flex items-start gap-2 mt-2 p-2.5 rounded-lg bg-surface border border-line">
+                <Info size={13} className="text-ink-5 mt-0.5 shrink-0" />
+                <p className="text-[11px] text-ink-4 leading-snug">
+                  {t('This uploads the carousel to TikTok through Postiz without posting it. Finish the post from TikTok inbox on your phone.', '这会通过 Postiz 把轮播上传到 TikTok，但不直接发布。之后在手机 TikTok inbox 里完成发布。')}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Accounts */}
+          {publisher === 'postbridge' && <div>
             <label className="text-[11px] text-ink-5 mb-1.5 block uppercase tracking-widest font-semibold">
               {t('Post to', '发布到')}
             </label>
@@ -172,10 +250,10 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
                 ))}
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Mode */}
-          <div>
+          {publisher === 'postbridge' && <div>
             <label className="text-[11px] text-ink-5 mb-1.5 block uppercase tracking-widest font-semibold">
               {t('When', '发布时间')}
             </label>
@@ -208,7 +286,7 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
                 )}
               </p>
             </div>
-          </div>
+          </div>}
 
           {error && <p className="text-[12px] text-red-600">{error}</p>}
         </div>
@@ -223,7 +301,7 @@ export function ScheduleModal({ slideshow, accounts, defaults, onClose, onConfir
             onClick={confirm}
             disabled={busy}
           >
-            {busy ? t('Uploading…', '上传中…') : mode === 'schedule' ? t('Schedule it', '确认排程') : t('Save draft', '保存草稿')}
+            {busy ? t('Uploading…', '上传中…') : publisher === 'postiz' ? t('Send to Postiz', '发送到 Postiz') : mode === 'schedule' ? t('Schedule it', '确认排程') : t('Save draft', '保存草稿')}
           </Button>
         </div>
       </div>

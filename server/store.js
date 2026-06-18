@@ -22,8 +22,9 @@ const DEFAULT_BRAIN = {
   audience: '',
   styleMemory: '',
 }
-const DEFAULT_DEFAULTS = { socialAccountIds: [], mode: 'draft' }
+const DEFAULT_DEFAULTS = { socialAccountIds: [], mode: 'draft', postizIntegrationId: '' }
 const DEFAULT_AI_BASE_URL = 'https://openrouter.ai/api/v1'
+const DEFAULT_POSTIZ_BASE_URL = 'https://api.postiz.com/public/v1'
 
 function ensureDir() {
   if (!existsSync(DIR)) mkdirSync(DIR, { recursive: true })
@@ -85,8 +86,9 @@ export function getConfig() {
     : projects[0].id
 
   const cfg = {
-    keys: { postbridge: '', openrouter: '', apify: '', ...s.keys },
+    keys: { postbridge: '', openrouter: '', apify: '', postiz: '', ...s.keys },
     aiBaseUrl: s.aiBaseUrl || DEFAULT_AI_BASE_URL,
+    postizBaseUrl: s.postizBaseUrl || DEFAULT_POSTIZ_BASE_URL,
     model: s.model || 'openai/gpt-4o-mini',
     pinterestActor: s.pinterestActor || 'fatihtahta/pinterest-scraper-search',
     projects,
@@ -117,6 +119,7 @@ export function saveGlobal(patch) {
   return writeConfig({
     ...c,
     aiBaseUrl: patch.aiBaseUrl ?? c.aiBaseUrl,
+    postizBaseUrl: patch.postizBaseUrl ?? c.postizBaseUrl,
     model: patch.model ?? c.model,
     pinterestActor: patch.pinterestActor ?? c.pinterestActor,
     keys: { ...c.keys, ...patch.keys },

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X, Loader2, CalendarClock, CheckCircle2, ExternalLink } from 'lucide-react';
-import type { Slideshow, SocialAccount, ProjectDefaults } from '../types';
+import type { Slideshow, SocialAccount, ProjectDefaults, PostizIntegration } from '../types';
 import { Button } from './Button';
 import { renderSlideshow } from '../lib/render';
-import { schedule as scheduleOne, getScheduledPosts } from '../lib/api';
+import { schedule as scheduleOne, getScheduledPosts, publishToPostiz } from '../lib/api';
 import { useT } from '../i18n';
 
 // post-bridge dashboard — where the user reviews what we just sent over.
@@ -13,6 +13,7 @@ const PB_DRAFTS_URL = 'https://www.post-bridge.com/dashboard/posts/drafts';
 interface BulkScheduleModalProps {
   slideshows: Slideshow[];
   accounts: SocialAccount[];
+  postizIntegrations: PostizIntegration[];
   defaults: ProjectDefaults;
   onClose: () => void;
   onDone: () => void;
@@ -25,8 +26,11 @@ function toLocalInput(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onDone }: BulkScheduleModalProps) {
+export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, defaults, onClose, onDone }: BulkScheduleModalProps) {
   const t = useT();
+  const tiktokIntegrations = postizIntegrations.filter((integration) => integration.providerIdentifier.toLowerCase() === 'tiktok' && !integration.disabled);
+  const [publisher, setPublisher] = useState<'postiz' | 'postbridge'>(defaults.postizIntegrationId ? 'postiz' : 'postbridge');
+  const [postizIntegrationId, setPostizIntegrationId] = useState(defaults.postizIntegrationId || tiktokIntegrations[0]?.id || '');
   const [selectedAccounts, setSelectedAccounts] = useState<number[]>(defaults.socialAccountIds);
   const [mode, setMode] = useState<'schedule' | 'draft'>(defaults.mode === 'draft' ? 'draft' : 'schedule');
   const [hours, setHours] = useState(6);
@@ -51,6 +55,10 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (!postizIntegrationId && tiktokIntegrations[0]?.id) setPostizIntegrationId(tiktokIntegrations[0].id);
+  }, [postizIntegrationId, tiktokIntegrations]);
+
   const resetStartAfterLast = (h: number) => {
     const base = lastScheduledMs ?? Date.now();
     setStartLocal(toLocalInput(new Date(base + h * 3600_000)));
@@ -67,8 +75,9 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
 
   const submit = async () => {
     setError(null);
-    if (!selectedAccounts.length) return setError(t('Pick at least one account.', '至少选择一个账号。'));
-    if (mode === 'schedule') {
+    if (publisher === 'postiz' && !postizIntegrationId) return setError(t('Pick a Postiz TikTok integration in Settings first.', '请先在设置里选择 Postiz TikTok integration。'));
+    if (publisher === 'postbridge' && !selectedAccounts.length) return setError(t('Pick at least one account.', '至少选择一个账号。'));
+    if (publisher === 'postbridge' && mode === 'schedule') {
       const start = new Date(startLocal).getTime();
       if (Number.isNaN(start)) return setError(t('Pick a valid start time.', '请选择有效的开始时间。'));
       if (start < Date.now() - 60_000) return setError(t('Start time is in the past.', '开始时间已经过去。'));
@@ -96,14 +105,24 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
         try {
           const slides = await renderSlideshow(show);
           const caption = `${show.caption}${show.hashtags.length ? ' ' + show.hashtags.map((t) => `#${t}`).join(' ') : ''}`;
-          await scheduleOne({
-            id: show.id,
-            caption,
-            slides,
-            socialAccounts: selectedAccounts,
-            scheduledAt: mode === 'schedule' ? new Date(startMs + i * stepMs).toISOString() : null,
-            mode,
-          });
+          if (publisher === 'postiz') {
+            await publishToPostiz({
+              id: show.id,
+              title: show.hook,
+              caption,
+              slides,
+              integrationId: postizIntegrationId,
+            });
+          } else {
+            await scheduleOne({
+              id: show.id,
+              caption,
+              slides,
+              socialAccounts: selectedAccounts,
+              scheduledAt: mode === 'schedule' ? new Date(startMs + i * stepMs).toISOString() : null,
+              mode,
+            });
+          }
           ok++;
         } catch (e) {
           console.error('[bulk] failed for', show.id, e);
@@ -129,23 +148,77 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
         {doneCount !== null ? (
           <div className="px-5 py-8 text-center space-y-2">
             <CheckCircle2 size={28} className="text-emerald-600 mx-auto" />
-            <p className="text-[14px] font-medium text-ink">{t(`${doneCount} of ${slideshows.length} ${mode === 'schedule' ? 'scheduled' : 'saved as drafts'}`, `${slideshows.length} 条中已完成 ${doneCount} 条${mode === 'schedule' ? '排程' : '草稿'}`)}</p>
+            <p className="text-[14px] font-medium text-ink">
+              {publisher === 'postiz'
+                ? t(`${doneCount} of ${slideshows.length} sent to Postiz`, `${slideshows.length} 条中已发送 ${doneCount} 条到 Postiz`)
+                : t(`${doneCount} of ${slideshows.length} ${mode === 'schedule' ? 'scheduled' : 'saved as drafts'}`, `${slideshows.length} 条中已完成 ${doneCount} 条${mode === 'schedule' ? '排程' : '草稿'}`)}
+            </p>
             <p className="text-[12px] text-ink-5">
-              {mode === 'schedule' ? t('post-bridge will publish them at their times.', 'post-bridge 会按时间发布。') : t('Find them in your post-bridge drafts.', '可在 post-bridge 草稿中查看。')}
+              {publisher === 'postiz'
+                ? t('Open TikTok inbox on your phone to finish and publish manually.', '打开手机 TikTok inbox 完成编辑并手动发布。')
+                : mode === 'schedule' ? t('post-bridge will publish them at their times.', 'post-bridge 会按时间发布。') : t('Find them in your post-bridge drafts.', '可在 post-bridge 草稿中查看。')}
             </p>
             <a
-              href={mode === 'schedule' ? PB_SCHEDULED_URL : PB_DRAFTS_URL}
+              href={publisher === 'postiz' ? 'https://www.tiktok.com/messages?lang=en' : mode === 'schedule' ? PB_SCHEDULED_URL : PB_DRAFTS_URL}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center justify-center gap-1.5 h-9 px-4 mt-2 rounded-lg bg-ink text-bg text-[13px] font-medium hover:opacity-90"
             >
-              {t('View on post-bridge', '在 post-bridge 查看')} <ExternalLink size={13} />
+              {publisher === 'postiz' ? t('Open TikTok inbox', '打开 TikTok inbox') : t('View on post-bridge', '在 post-bridge 查看')} <ExternalLink size={13} />
             </a>
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
-            {/* Accounts */}
             <div>
+              <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">{t('Publisher', '发布通道')}</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setPublisher('postiz')}
+                  disabled={busy}
+                  className={`text-left rounded-lg border px-3 py-2 transition-colors disabled:opacity-50 ${
+                    publisher === 'postiz' ? 'border-ink bg-ink text-bg' : 'border-line bg-card text-ink hover:border-line-2'
+                  }`}
+                >
+                  <span className="block text-[13px] font-semibold">Postiz</span>
+                  <span className={`block text-[11px] mt-0.5 ${publisher === 'postiz' ? 'text-bg/70' : 'text-ink-6'}`}>{t('TikTok inbox upload', 'TikTok inbox 上传')}</span>
+                </button>
+                <button
+                  onClick={() => setPublisher('postbridge')}
+                  disabled={busy}
+                  className={`text-left rounded-lg border px-3 py-2 transition-colors disabled:opacity-50 ${
+                    publisher === 'postbridge' ? 'border-ink bg-ink text-bg' : 'border-line bg-card text-ink hover:border-line-2'
+                  }`}
+                >
+                  <span className="block text-[13px] font-semibold">Postbridge</span>
+                  <span className={`block text-[11px] mt-0.5 ${publisher === 'postbridge' ? 'text-bg/70' : 'text-ink-6'}`}>{t('Draft or schedule', '草稿或排程')}</span>
+                </button>
+              </div>
+            </div>
+
+            {publisher === 'postiz' && (
+              <div>
+                <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">{t('Postiz TikTok integration', 'Postiz TikTok integration')}</label>
+                {tiktokIntegrations.length === 0 ? (
+                  <p className="text-[12px] text-ink-5">{t('No TikTok integration loaded from Postiz. Add your Postiz key in Settings and connect TikTok inside Postiz.', '没有从 Postiz 加载到 TikTok integration。请在设置里添加 Postiz Key，并在 Postiz 里连接 TikTok。')}</p>
+                ) : (
+                  <select
+                    value={postizIntegrationId}
+                    onChange={(e) => setPostizIntegrationId(e.target.value)}
+                    disabled={busy}
+                    className="w-full h-9 bg-card border border-line rounded-lg px-3 text-[13px] text-ink outline-none focus:border-ink-7"
+                  >
+                    <option value="">{t('Select TikTok', '选择 TikTok')}</option>
+                    {tiktokIntegrations.map((integration) => (
+                      <option key={integration.id} value={integration.id}>{integration.name || integration.profile || integration.id}</option>
+                    ))}
+                  </select>
+                )}
+                <p className="text-[11px] text-ink-6 mt-1">{t('Each selected slideshow will be uploaded to TikTok inbox through Postiz for manual publishing.', '每条选中的轮播都会通过 Postiz 上传到 TikTok inbox，之后手动发布。')}</p>
+              </div>
+            )}
+
+            {/* Accounts */}
+            {publisher === 'postbridge' && <div>
               <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">{t('Post to', '发布到')}</label>
               {accounts.length === 0 ? (
                 <p className="text-[12px] text-ink-5">{t('No connected accounts. Add your post-bridge key and connect accounts in Settings.', '还没有连接账号。先在设置里添加 post-bridge Key 并连接账号。')}</p>
@@ -160,18 +233,18 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
                   ))}
                 </div>
               )}
-            </div>
+            </div>}
 
             {/* Mode */}
-            <div>
+            {publisher === 'postbridge' && <div>
               <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">{t('When', '发布时间')}</label>
               <div className="flex gap-2">
                 <Button variant={mode === 'schedule' ? 'primary' : 'secondary'} onClick={() => setMode('schedule')} disabled={busy}>{t('Schedule', '排程')}</Button>
                 <Button variant={mode === 'draft' ? 'primary' : 'secondary'} onClick={() => setMode('draft')} disabled={busy}>{t('Save all as drafts', '全部存草稿')}</Button>
               </div>
-            </div>
+            </div>}
 
-            {mode === 'schedule' && (
+            {publisher === 'postbridge' && mode === 'schedule' && (
               <div className="rounded-lg border border-line bg-surface p-3 space-y-3">
                 <div>
                   <label className="text-[10px] text-ink-6 uppercase tracking-wider mb-1 block">{t('Start at', '开始时间')}</label>
@@ -230,7 +303,7 @@ export function BulkScheduleModal({ slideshows, accounts, defaults, onClose, onD
                 onClick={submit}
                 disabled={busy}
               >
-                {busy ? t('Scheduling…', '排程中…') : mode === 'schedule' ? t(`Schedule ${slideshows.length}`, `排程 ${slideshows.length} 条`) : t(`Draft ${slideshows.length}`, `草稿 ${slideshows.length} 条`)}
+                {busy ? t('Uploading…', '上传中…') : publisher === 'postiz' ? t(`Send ${slideshows.length} to Postiz`, `发送 ${slideshows.length} 条到 Postiz`) : mode === 'schedule' ? t(`Schedule ${slideshows.length}`, `排程 ${slideshows.length} 条`) : t(`Draft ${slideshows.length}`, `草稿 ${slideshows.length} 条`)}
               </Button>
             </>
           )}

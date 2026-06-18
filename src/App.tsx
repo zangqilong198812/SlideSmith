@@ -12,13 +12,14 @@ import { BrainView } from './views/BrainView';
 import { SettingsView } from './views/SettingsView';
 import { renderSlideshow } from './lib/render';
 import * as api from './lib/api';
-import type { AppConfig, Project, Slideshow, Slide, SocialAccount, BrainState, ViewKey, GenerateStyle } from './types';
+import type { AppConfig, Project, Slideshow, Slide, SocialAccount, BrainState, ViewKey, GenerateStyle, PostizIntegration } from './types';
 
 export default function App() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [activeView, setActiveView] = useState<ViewKey>('queue');
   const [queue, setQueue] = useState<Slideshow[]>([]);
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+  const [postizIntegrations, setPostizIntegrations] = useState<PostizIntegration[]>([]);
   const [generating, setGenerating] = useState(false);
   const [scheduling, setScheduling] = useState<Slideshow | null>(null);
   const [editing, setEditing] = useState<Slideshow | null>(null);
@@ -42,19 +43,28 @@ export default function App() {
     }
   }, []);
 
+  const loadPostizIntegrations = useCallback(async () => {
+    try {
+      setPostizIntegrations(await api.getPostizIntegrations());
+    } catch {
+      setPostizIntegrations([]);
+    }
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
         const cfg = await api.getConfig();
         setConfig(cfg);
         setQueue(await api.getQueue());
-        if (!cfg.keys.openrouter && !cfg.keys.postbridge) setActiveView('settings');
+        if (!cfg.keys.openrouter && !cfg.keys.postbridge && !cfg.keys.postiz) setActiveView('settings');
         if (cfg.keys.postbridge) loadAccounts();
+        if (cfg.keys.postiz) loadPostizIntegrations();
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not reach the Slidesmith server.');
       }
     })();
-  }, [loadAccounts]);
+  }, [loadAccounts, loadPostizIntegrations]);
 
   const generate = async (count: number, packs: string[], style: GenerateStyle) => {
     setError(null);
@@ -106,21 +116,34 @@ export default function App() {
   };
 
   const confirmSchedule = async (opts: {
+    publisher: 'postbridge' | 'postiz';
     socialAccounts: number[];
+    postizIntegrationId?: string;
     mode: 'draft' | 'schedule';
     scheduledAt: string | null;
   }) => {
-    if (!scheduling) return;
+    if (!scheduling || !activeProject) return;
     const scheduledId = scheduling.id;
     const slides = await renderSlideshow(scheduling);
-    await api.schedule({
-      id: scheduledId,
-      caption: `${scheduling.caption}${scheduling.hashtags.length ? ' ' + scheduling.hashtags.map((t) => `#${t}`).join(' ') : ''}`,
-      slides,
-      socialAccounts: opts.socialAccounts,
-      scheduledAt: opts.scheduledAt,
-      mode: opts.mode,
-    });
+    const caption = `${scheduling.caption}${scheduling.hashtags.length ? ' ' + scheduling.hashtags.map((t) => `#${t}`).join(' ') : ''}`;
+    if (opts.publisher === 'postiz') {
+      await api.publishToPostiz({
+        id: scheduledId,
+        title: scheduling.hook,
+        caption,
+        slides,
+        integrationId: opts.postizIntegrationId || activeProject.defaults.postizIntegrationId || '',
+      });
+    } else {
+      await api.schedule({
+        id: scheduledId,
+        caption,
+        slides,
+        socialAccounts: opts.socialAccounts,
+        scheduledAt: opts.scheduledAt,
+        mode: opts.mode,
+      });
+    }
     // Drop the now-scheduled slideshow from the queue immediately (optimistic),
     // then reconcile with the server. The modal stays open showing its success
     // state with a link to post-bridge instead of us jumping to the Schedule tab.
@@ -132,16 +155,18 @@ export default function App() {
   const saveSettings = async (patch: {
     keys?: AppConfig['keys'];
     aiBaseUrl?: string;
+    postizBaseUrl?: string;
     model?: string;
     pinterestActor?: string;
     name?: string;
     defaults?: Project['defaults'];
     imagePacks?: string[];
   }) => {
-    if (patch.keys || patch.aiBaseUrl !== undefined || patch.model !== undefined || patch.pinterestActor !== undefined) {
+    if (patch.keys || patch.aiBaseUrl !== undefined || patch.postizBaseUrl !== undefined || patch.model !== undefined || patch.pinterestActor !== undefined) {
       await api.saveConfig({
         keys: patch.keys,
         aiBaseUrl: patch.aiBaseUrl,
+        postizBaseUrl: patch.postizBaseUrl,
         model: patch.model,
         pinterestActor: patch.pinterestActor,
       });
@@ -154,6 +179,7 @@ export default function App() {
       });
     }
     setConfig(await api.getConfig());
+    if (patch.keys?.postiz || patch.postizBaseUrl !== undefined) loadPostizIntegrations();
   };
 
   const saveBrain = async (brain: BrainState) => {
@@ -236,11 +262,13 @@ export default function App() {
             config={config}
             project={activeProject}
             accounts={accounts}
+            postizIntegrations={postizIntegrations}
             canDelete={config.projects.length > 1}
             onSave={saveSettings}
             onConfigChange={setConfig}
             onDeleteProject={() => removeProject(activeProject.id)}
             onReloadAccounts={loadAccounts}
+            onReloadPostizIntegrations={loadPostizIntegrations}
           />
         )}
       </main>
@@ -249,6 +277,7 @@ export default function App() {
         <ScheduleModal
           slideshow={scheduling}
           accounts={accounts}
+          postizIntegrations={postizIntegrations}
           defaults={activeProject.defaults}
           onClose={() => setScheduling(null)}
           onConfirm={confirmSchedule}
@@ -267,6 +296,7 @@ export default function App() {
         <BulkScheduleModal
           slideshows={queue.filter((s) => selectedIds.includes(s.id))}
           accounts={accounts}
+          postizIntegrations={postizIntegrations}
           defaults={activeProject.defaults}
           // Closing via the X/backdrop must still drop any now-scheduled items
           // from the queue — otherwise it looks stale until a browser reload.

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Check, X, Loader2, KeyRound, Trash2, Info, Image as ImageIcon, Upload } from 'lucide-react';
-import type { AppConfig, Project, SocialAccount, ModelOption } from '../types';
+import type { AppConfig, Project, SocialAccount, ModelOption, PostizIntegration } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { Button } from '../components/Button';
 import { testKeys, getModels, uploadFinalSlide, clearFinalSlide } from '../lib/api';
@@ -12,10 +12,12 @@ interface SettingsViewProps {
   config: AppConfig;
   project: Project;
   accounts: SocialAccount[];
+  postizIntegrations: PostizIntegration[];
   canDelete: boolean;
   onSave: (patch: {
     keys?: AppConfig['keys'];
     aiBaseUrl?: string;
+    postizBaseUrl?: string;
     model?: string;
     pinterestActor?: string;
     name?: string;
@@ -25,9 +27,11 @@ interface SettingsViewProps {
   onConfigChange: (config: AppConfig) => void;
   onDeleteProject: () => void;
   onReloadAccounts: () => void;
+  onReloadPostizIntegrations: () => void;
 }
 
 const POSTBRIDGE_URL = 'https://post-bridge.com?atp=clip-factory';
+const POSTIZ_BASE_URL = 'https://api.postiz.com/public/v1';
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 const DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
 const DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-flash';
@@ -47,15 +51,19 @@ export function SettingsView({
   config,
   project,
   accounts,
+  postizIntegrations,
   canDelete,
   onSave,
   onConfigChange,
   onDeleteProject,
   onReloadAccounts,
+  onReloadPostizIntegrations,
 }: SettingsViewProps) {
   const language = useLanguage();
   const t = useT();
   const [postbridge, setPostbridge] = useState(config.keys.postbridge);
+  const [postiz, setPostiz] = useState(config.keys.postiz || '');
+  const [postizBaseUrl, setPostizBaseUrl] = useState(config.postizBaseUrl || POSTIZ_BASE_URL);
   const [openrouter, setOpenrouter] = useState(config.keys.openrouter);
   const [aiBaseUrl, setAiBaseUrl] = useState(config.aiBaseUrl || OPENROUTER_BASE_URL);
   const [apify, setApify] = useState(config.keys.apify);
@@ -64,6 +72,7 @@ export function SettingsView({
   const [name, setName] = useState(project.name);
   const [mode, setMode] = useState(project.defaults.mode);
   const [selected, setSelected] = useState<number[]>(project.defaults.socialAccountIds);
+  const [postizIntegrationId, setPostizIntegrationId] = useState(project.defaults.postizIntegrationId || '');
   const [imagePacks, setImagePacks] = useState<string[]>(project.imagePacks);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [modelFilter, setModelFilter] = useState('');
@@ -72,15 +81,16 @@ export function SettingsView({
   const [finalSlideBusy, setFinalSlideBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [test, setTest] = useState<{ postbridge: boolean; openrouter: boolean; apify: boolean; errors: Record<string, string> } | null>(null);
+  const [test, setTest] = useState<{ postbridge: boolean; postiz: boolean; openrouter: boolean; apify: boolean; errors: Record<string, string> } | null>(null);
 
   // Re-sync editable fields when the active project changes (switching projects).
   useEffect(() => {
     setName(project.name);
     setMode(project.defaults.mode);
     setSelected(project.defaults.socialAccountIds);
+    setPostizIntegrationId(project.defaults.postizIntegrationId || '');
     setImagePacks(project.imagePacks);
-  }, [project.id, project.name, project.defaults.mode, project.defaults.socialAccountIds, project.imagePacks]);
+  }, [project.id, project.name, project.defaults.mode, project.defaults.socialAccountIds, project.defaults.postizIntegrationId, project.imagePacks]);
 
   useEffect(() => {
     getModels().then(setModels).catch(() => setModels([]));
@@ -92,15 +102,17 @@ export function SettingsView({
     setSaveError(null);
     try {
       await onSave({
-        keys: { postbridge, openrouter, apify },
+        keys: { postbridge, postiz, openrouter, apify },
         aiBaseUrl,
+        postizBaseUrl,
         model,
         pinterestActor,
         name,
-        defaults: { socialAccountIds: selected, mode },
+        defaults: { socialAccountIds: selected, mode, postizIntegrationId },
         imagePacks,
       });
       onReloadAccounts();
+      onReloadPostizIntegrations();
       setSaved(true);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e));
@@ -163,6 +175,9 @@ export function SettingsView({
       )
     : models;
   const isDeepSeek = aiBaseUrl.includes('deepseek');
+  const postizTikTokIntegrations = postizIntegrations.filter((integration) =>
+    integration.providerIdentifier.toLowerCase() === 'tiktok'
+  );
 
   return (
     <>
@@ -226,6 +241,26 @@ export function SettingsView({
                 className={`${inputClass} font-mono`}
               />
               <TestBadge ok={test?.postbridge} error={test?.errors?.postbridge} />
+            </Field>
+            <Field
+              label={t('Postiz API key', 'Postiz API Key')}
+              hint={t('Used for TikTok upload mode: Slidesmith sends rendered images to Postiz, then Postiz sends them to TikTok inbox for manual publishing.', '用于 TikTok Upload 模式：Slidesmith 把图片发给 Postiz，再由 Postiz 发到 TikTok inbox，之后你手动发布。')}
+            >
+              <input
+                value={postiz}
+                onChange={(e) => setPostiz(e.target.value)}
+                placeholder="postiz_..."
+                className={`${inputClass} font-mono`}
+              />
+              <TestBadge ok={test?.postiz} error={test?.errors?.postiz} />
+            </Field>
+            <Field label={t('Postiz Base URL', 'Postiz Base URL')} hint={t('Cloud default is https://api.postiz.com/public/v1. For self-hosted Postiz, use https://your-domain/api/public/v1.', '云端默认 https://api.postiz.com/public/v1。自部署则填 https://你的域名/api/public/v1。')}>
+              <input
+                value={postizBaseUrl}
+                onChange={(e) => setPostizBaseUrl(e.target.value)}
+                placeholder={POSTIZ_BASE_URL}
+                className={`${inputClass} font-mono`}
+              />
             </Field>
             <Field label={t('AI provider', 'AI 服务商')} hint={t("Use OpenRouter's model catalog, or connect directly to DeepSeek with your DeepSeek key.", '可以用 OpenRouter 模型目录，也可以直接填 DeepSeek Key。')}>
               <div className="flex gap-2">
@@ -323,8 +358,38 @@ export function SettingsView({
           {/* Posting defaults (per project) */}
           <Section
             title={t('Posting defaults', '发布默认值')}
-            description={t('Which connected accounts this project posts to, and whether to schedule directly or save as a draft in post-bridge.', '设置这个项目默认发到哪些账号，以及直接排程还是保存到 post-bridge 草稿。')}
+            description={t('Choose defaults for Postbridge automation and Postiz TikTok upload mode.', '设置 Postbridge 自动发布和 Postiz TikTok Upload 模式的默认值。')}
           >
+            <Field label={t('Default Postiz TikTok integration', '默认 Postiz TikTok integration')} hint={t('This is the TikTok channel Postiz will use for Upload without posting. Refresh it with Test connection after connecting TikTok in Postiz.', '这是 Postiz 用来 Upload without posting 的 TikTok channel。在 Postiz 连接 TikTok 后点测试连接刷新。')}>
+              {postizIntegrations.length === 0 ? (
+                <p className="text-[12px] text-ink-5">
+                  {t('No Postiz integrations loaded yet. Add your Postiz API key, save/test, then connect TikTok in Postiz.', '还没有加载到 Postiz integrations。先填 Postiz API Key 并保存/测试，然后去 Postiz 连接 TikTok。')}
+                </p>
+              ) : postizTikTokIntegrations.length === 0 ? (
+                <p className="text-[12px] text-ink-5">
+                  {t('Postiz is connected, but no TikTok integration was found. Connect TikTok inside Postiz first.', 'Postiz 已连接，但没有找到 TikTok integration。请先在 Postiz 里连接 TikTok。')}
+                </p>
+              ) : (
+                <select
+                  value={postizIntegrationId}
+                  onChange={(e) => setPostizIntegrationId(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">{t('Select a TikTok integration', '选择 TikTok integration')}</option>
+                  {postizTikTokIntegrations
+                    .filter((integration) => !integration.disabled)
+                    .map((integration) => (
+                      <option key={integration.id} value={integration.id}>
+                        {integration.providerIdentifier || 'unknown'} · {integration.name || integration.profile || integration.id}
+                      </option>
+                    ))}
+                </select>
+              )}
+            </Field>
+
+            <div className="pt-2">
+              <h3 className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-2">{t('Postbridge defaults', 'Postbridge 默认值')}</h3>
+            </div>
             {accounts.length === 0 ? (
               <p className="text-[12px] text-ink-5">
                 {t('No connected accounts yet. Add your post-bridge key above, hit Test, then connect accounts at', '还没有连接账号。先填 post-bridge Key 并测试，然后去')} <PostBridgeLink>post-bridge.com</PostBridgeLink> {t("connect accounts — they'll appear here.", '连接账号，之后会显示在这里。')}

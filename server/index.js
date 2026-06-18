@@ -23,6 +23,7 @@ import {
   CONFIG_DIR,
 } from './store.js'
 import { listAccounts, listPosts, listAnalytics, syncAnalytics, uploadMedia, createPost } from './postbridge.js'
+import { validatePostiz, listIntegrations as listPostizIntegrations, uploadPostizMedia, createPostizPost, buildTikTokUploadPayload } from './postiz.js'
 import { generateSlideshows } from './generate.js'
 import { listModels, validateKey } from './openrouter.js'
 import { listLibrary, listPacks, scrapePinterest, removeScraped, getScrapedFile } from './library.js'
@@ -77,8 +78,8 @@ app.get('/api/final-slide/:id', h(async (req, res) => {
 
 // Validate that the saved keys actually work, so Settings can show a green check.
 app.post('/api/config/test', h(async (_req, res) => {
-  const { keys, aiBaseUrl } = getConfig()
-  const result = { postbridge: false, openrouter: false, apify: false, errors: {} }
+  const { keys, aiBaseUrl, postizBaseUrl } = getConfig()
+  const result = { postbridge: false, postiz: false, openrouter: false, apify: false, errors: {} }
   if (keys.postbridge) {
     try { await listAccounts(keys.postbridge); result.postbridge = true }
     catch (e) { result.errors.postbridge = e.message }
@@ -86,6 +87,10 @@ app.post('/api/config/test', h(async (_req, res) => {
   if (keys.openrouter) {
     try { await validateKey(keys.openrouter, aiBaseUrl); result.openrouter = true }
     catch (e) { result.errors.openrouter = e.message }
+  }
+  if (keys.postiz) {
+    try { await validatePostiz(keys.postiz, postizBaseUrl); result.postiz = true }
+    catch (e) { result.errors.postiz = e.message }
   }
   if (keys.apify) {
     try {
@@ -192,6 +197,46 @@ app.get('/api/library/img/:id', h(async (req, res) => {
 app.get('/api/accounts', h(async (_req, res) => {
   const { keys } = getConfig()
   res.json(await listAccounts(keys.postbridge))
+}))
+
+// ── Postiz ──────────────────────────────────────────────────────────────────
+app.get('/api/postiz/integrations', h(async (_req, res) => {
+  const { keys, postizBaseUrl } = getConfig()
+  res.json(await listPostizIntegrations(keys.postiz, postizBaseUrl))
+}))
+
+app.post('/api/postiz/publish', h(async (req, res) => {
+  const { keys, postizBaseUrl } = getConfig()
+  const { id, title, caption, slides, integrationId } = req.body || {}
+  if (!integrationId) throw new Error('Pick a Postiz integration in Settings.')
+  if (!Array.isArray(slides) || !slides.length) throw new Error('No slide images to upload.')
+  if (slides.length > 35) throw new Error('TikTok photo posts support at most 35 images.')
+
+  schedLog.start(`Uploading ${id || 'slideshow'} to Postiz TikTok inbox · ${slides.length} slide${slides.length === 1 ? '' : 's'}`)
+  let done = 0
+  const uploaded = await Promise.all(
+    slides.map(async (slide, i) => {
+      const buffer = Buffer.from(String(slide).replace(/^data:image\/\w+;base64,/, ''), 'base64')
+      const media = await uploadPostizMedia(keys.postiz, postizBaseUrl, {
+        buffer,
+        mimeType: 'image/png',
+        name: `${id || 'slide'}-${i + 1}.png`,
+      })
+      schedLog.progress(++done, slides.length, 'slides uploaded to Postiz')
+      return media.path
+    })
+  )
+
+  const post = await createPostizPost(keys.postiz, postizBaseUrl, buildTikTokUploadPayload({
+    integrationId,
+    caption,
+    imagePaths: uploaded,
+    title,
+  }))
+
+  if (id) removeFromQueue(getActiveProject().id, id)
+  schedLog.ok('Done — uploaded to Postiz for TikTok inbox publishing')
+  res.json({ post })
 }))
 
 app.get('/api/posts', h(async (_req, res) => {

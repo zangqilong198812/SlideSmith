@@ -10,6 +10,7 @@ import type {
   PostResult,
   ModelOption,
   GenerateStyle,
+  PostizIntegration,
   LibraryImage,
   LibraryPack,
 } from '../types';
@@ -31,6 +32,7 @@ export const getConfig = () => req<AppConfig>('/config');
 export const saveConfig = (patch: {
   keys?: AppConfig['keys'];
   aiBaseUrl?: string;
+  postizBaseUrl?: string;
   model?: string;
   pinterestActor?: string;
 }) =>
@@ -58,7 +60,7 @@ export const clearFinalSlide = (projectId: string) =>
   req<AppConfig>(`/projects/${projectId}/final-slide`, { method: 'DELETE' });
 
 export const testKeys = () =>
-  req<{ postbridge: boolean; openrouter: boolean; apify: boolean; errors: Record<string, string> }>(
+  req<{ postbridge: boolean; postiz: boolean; openrouter: boolean; apify: boolean; errors: Record<string, string> }>(
     '/config/test',
     { method: 'POST' }
   );
@@ -94,6 +96,8 @@ export const deleteLibraryImage = (id: string) =>
 
 export const getAccounts = () => req<SocialAccount[]>('/accounts');
 
+export const getPostizIntegrations = () => req<PostizIntegration[]>('/postiz/integrations');
+
 export interface SchedulePayload {
   id: string;
   caption: string;
@@ -105,6 +109,17 @@ export interface SchedulePayload {
 
 export const schedule = (payload: SchedulePayload) =>
   req<unknown>('/schedule', { method: 'POST', body: JSON.stringify(payload) });
+
+export interface PostizPublishPayload {
+  id: string;
+  title: string;
+  caption: string;
+  slides: string[];
+  integrationId: string;
+}
+
+export const publishToPostiz = (payload: PostizPublishPayload) =>
+  req<{ post: unknown }>('/postiz/publish', { method: 'POST', body: JSON.stringify(payload) });
 
 // post-bridge → ScheduledPost. post-bridge stores caption + media + schedule;
 // it has no concept of our per-slide text, so the Schedule view shows the

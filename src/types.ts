@@ -36,6 +36,7 @@ export interface BrainState {
 export interface ProjectDefaults {
   socialAccountIds: number[];
   mode: 'draft' | 'schedule';
+  postizIntegrationId?: string;
 }
 
 export interface Project {
@@ -48,8 +49,9 @@ export interface Project {
 }
 
 export interface AppConfig {
-  keys: { postbridge: string; openrouter: string; apify: string };
+  keys: { postbridge: string; openrouter: string; apify: string; postiz: string };
   aiBaseUrl: string;
+  postizBaseUrl: string;
   model: string;
   pinterestActor: string;
   projects: Project[];
@@ -79,6 +81,15 @@ export interface SocialAccount {
   id: number;
   platform: string;
   username: string;
+}
+
+export interface PostizIntegration {
+  id: string;
+  name: string;
+  providerIdentifier: string;
+  picture?: string;
+  profile?: string;
+  disabled?: boolean;
 }
 
 // Shapes returned by post-bridge (mapped in lib/api.ts).
