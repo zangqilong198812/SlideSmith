@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, X, Sparkles, RefreshCw, Loader2, Pencil, Trash2 } from 'lucide-react';
+import { Check, X, Sparkles, RefreshCw, Loader2, Pencil, Trash2, Download } from 'lucide-react';
 import type { Slideshow } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
 import { SlidePreview } from '../components/SlidePreview';
@@ -7,6 +7,7 @@ import { Button } from '../components/Button';
 import { IconButton } from '../components/IconButton';
 import { SlideLightbox } from '../components/Lightbox';
 import { useT } from '../i18n';
+import { downloadSlideshows } from '../lib/download';
 
 interface QueueViewProps {
   slideshows: Slideshow[];
@@ -41,6 +42,29 @@ export function QueueView({
 }: QueueViewProps) {
   const t = useT();
   const selectedCount = selectedIds.length;
+  const [exportingId, setExportingId] = useState<string | null>(null);
+  const [exportingSelection, setExportingSelection] = useState(false);
+  const selectedSlideshows = slideshows.filter((s) => selectedIds.includes(s.id));
+
+  const downloadOne = async (slideshow: Slideshow) => {
+    setExportingId(slideshow.id);
+    try {
+      await downloadSlideshows([slideshow]);
+    } finally {
+      setExportingId(null);
+    }
+  };
+
+  const downloadSelected = async () => {
+    if (!selectedSlideshows.length) return;
+    setExportingSelection(true);
+    try {
+      await downloadSlideshows(selectedSlideshows);
+    } finally {
+      setExportingSelection(false);
+    }
+  };
+
   return (
     <>
       <ViewHeader
@@ -56,6 +80,14 @@ export function QueueView({
                 <span className="text-[12px] text-ink-5">{t(`${selectedCount} selected`, `已选 ${selectedCount} 条`)}</span>
                 <Button variant="primary" icon={<Check size={13} />} onClick={onBulkSchedule}>
                   {t(`Schedule ${selectedCount}`, `排程 ${selectedCount} 条`)}
+                </Button>
+                <Button
+                  variant="secondary"
+                  icon={exportingSelection ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                  onClick={downloadSelected}
+                  disabled={exportingSelection}
+                >
+                  {exportingSelection ? t('Exporting…', '导出中…') : t(`Download ${selectedCount}`, `下载 ${selectedCount} 条`)}
                 </Button>
                 <Button variant="danger-ghost" icon={<Trash2 size={13} />} onClick={onDeleteSelected}>
                   {t(`Delete ${selectedCount}`, `删除 ${selectedCount} 条`)}
@@ -119,6 +151,8 @@ export function QueueView({
                 onApprove={() => onApprove(s.id)}
                 onReject={() => onReject(s.id)}
                 onEdit={() => onEdit(s.id)}
+                onDownload={() => downloadOne(s)}
+                downloading={exportingId === s.id}
               />
             ))}
           </div>
@@ -135,9 +169,11 @@ interface CardProps {
   onApprove: () => void;
   onReject: () => void;
   onEdit: () => void;
+  onDownload: () => void;
+  downloading: boolean;
 }
 
-function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onReject, onEdit }: CardProps) {
+function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onReject, onEdit, onDownload, downloading }: CardProps) {
   const t = useT();
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
@@ -183,6 +219,14 @@ function SlideshowCard({ slideshow, selected, onToggleSelect, onApprove, onRejec
         <div className="flex items-center gap-2 mt-4 pt-3 border-t border-line">
           <Button variant="secondary" icon={<Pencil size={13} />} onClick={onEdit}>
             {t('Edit', '编辑')}
+          </Button>
+          <Button
+            variant="secondary"
+            icon={downloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+            onClick={onDownload}
+            disabled={downloading}
+          >
+            {downloading ? t('Exporting…', '导出中…') : t('Download', '下载')}
           </Button>
           <Button
             variant="primary"
