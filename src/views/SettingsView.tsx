@@ -82,6 +82,9 @@ export function SettingsView({
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [test, setTest] = useState<{ postbridge: boolean; postiz: boolean; openrouter: boolean; apify: boolean; errors: Record<string, string> } | null>(null);
+  const [publishingTab, setPublishingTab] = useState<'postiz' | 'postbridge'>(
+    config.keys.postiz || project.defaults.postizIntegrationId ? 'postiz' : 'postbridge'
+  );
 
   // Re-sync editable fields when the active project changes (switching projects).
   useEffect(() => {
@@ -225,43 +228,141 @@ export function SettingsView({
             </Field>
           </Section>
 
-          {/* Keys (global) */}
+          {/* Publishing */}
           <Section
-            title={t('API keys', 'API Key')}
-            description={t('Shared across all projects. Stored in ~/.slidesmith/config.json on your computer.', '所有项目共用。保存在你电脑的 ~/.slidesmith/config.json。')}
+            title={t('Publishing', '发布')}
+            description={t('Configure each publishing service separately. API keys are stored locally in ~/.slidesmith/config.json.', '分别配置每个发布服务。API Key 保存在本机 ~/.slidesmith/config.json。')}
           >
-            <Field
-              label={t('post-bridge API key', 'post-bridge API Key')}
-              hint={<>{t('Handles scheduling, posting & analytics. Get one at', '负责排程、发布和数据统计。去')} <PostBridgeLink>post-bridge.com</PostBridgeLink> {t('get one.', '获取。')}</>}
-            >
-              <input
-                value={postbridge}
-                onChange={(e) => setPostbridge(e.target.value)}
-                placeholder="pb_..."
-                className={`${inputClass} font-mono`}
-              />
-              <TestBadge ok={test?.postbridge} error={test?.errors?.postbridge} />
-            </Field>
-            <Field
-              label={t('Postiz API key', 'Postiz API Key')}
-              hint={t('Used for TikTok upload mode: Slidesmith sends rendered images to Postiz, then Postiz sends them to TikTok inbox for manual publishing.', '用于 TikTok Upload 模式：Slidesmith 把图片发给 Postiz，再由 Postiz 发到 TikTok inbox，之后你手动发布。')}
-            >
-              <input
-                value={postiz}
-                onChange={(e) => setPostiz(e.target.value)}
-                placeholder="postiz_..."
-                className={`${inputClass} font-mono`}
-              />
-              <TestBadge ok={test?.postiz} error={test?.errors?.postiz} />
-            </Field>
-            <Field label={t('Postiz Base URL', 'Postiz Base URL')} hint={t('Cloud default is https://api.postiz.com/public/v1. For self-hosted Postiz, use https://your-domain/api/public/v1.', '云端默认 https://api.postiz.com/public/v1。自部署则填 https://你的域名/api/public/v1。')}>
-              <input
-                value={postizBaseUrl}
-                onChange={(e) => setPostizBaseUrl(e.target.value)}
-                placeholder={POSTIZ_BASE_URL}
-                className={`${inputClass} font-mono`}
-              />
-            </Field>
+            <div className="grid grid-cols-2 gap-2 p-1 rounded-xl border border-line bg-surface">
+              <button
+                type="button"
+                onClick={() => setPublishingTab('postiz')}
+                className={`h-10 rounded-lg text-[13px] font-medium transition-colors ${
+                  publishingTab === 'postiz' ? 'bg-card border border-line text-ink shadow-sm' : 'text-ink-5 hover:text-ink'
+                }`}
+              >
+                Postiz
+              </button>
+              <button
+                type="button"
+                onClick={() => setPublishingTab('postbridge')}
+                className={`h-10 rounded-lg text-[13px] font-medium transition-colors ${
+                  publishingTab === 'postbridge' ? 'bg-card border border-line text-ink shadow-sm' : 'text-ink-5 hover:text-ink'
+                }`}
+              >
+                Postbridge
+              </button>
+            </div>
+
+            {publishingTab === 'postiz' ? (
+              <div className="space-y-3">
+                <Field
+                  label={t('Postiz API key', 'Postiz API Key')}
+                  hint={t('Used for TikTok upload mode: Slidesmith sends rendered images to Postiz, then Postiz sends them to TikTok inbox for manual publishing.', '用于 TikTok Upload 模式：Slidesmith 把图片发给 Postiz，再由 Postiz 发到 TikTok inbox，之后你手动发布。')}
+                >
+                  <input
+                    value={postiz}
+                    onChange={(e) => setPostiz(e.target.value)}
+                    placeholder="postiz_..."
+                    className={`${inputClass} font-mono`}
+                  />
+                  <TestBadge ok={test?.postiz} error={test?.errors?.postiz} />
+                </Field>
+                <Field label={t('Postiz Base URL', 'Postiz Base URL')} hint={t('Cloud default is https://api.postiz.com/public/v1. For self-hosted Postiz, use https://your-domain/api/public/v1.', '云端默认 https://api.postiz.com/public/v1。自部署则填 https://你的域名/api/public/v1。')}>
+                  <input
+                    value={postizBaseUrl}
+                    onChange={(e) => setPostizBaseUrl(e.target.value)}
+                    placeholder={POSTIZ_BASE_URL}
+                    className={`${inputClass} font-mono`}
+                  />
+                </Field>
+                <Field label={t('Default TikTok integration', '默认 TikTok integration')} hint={t('This is the TikTok channel Postiz will use for Upload without posting. Refresh it with Test connection after connecting TikTok in Postiz.', '这是 Postiz 用来 Upload without posting 的 TikTok channel。在 Postiz 连接 TikTok 后点测试连接刷新。')}>
+                  {postizIntegrations.length === 0 ? (
+                    <p className="text-[12px] text-ink-5">
+                      {t('No Postiz integrations loaded yet. Add your Postiz API key, save/test, then connect TikTok in Postiz.', '还没有加载到 Postiz integrations。先填 Postiz API Key 并保存/测试，然后去 Postiz 连接 TikTok。')}
+                    </p>
+                  ) : postizTikTokIntegrations.length === 0 ? (
+                    <p className="text-[12px] text-ink-5">
+                      {t('Postiz is connected, but no TikTok integration was found. Connect TikTok inside Postiz first.', 'Postiz 已连接，但没有找到 TikTok integration。请先在 Postiz 里连接 TikTok。')}
+                    </p>
+                  ) : (
+                    <select
+                      value={postizIntegrationId}
+                      onChange={(e) => setPostizIntegrationId(e.target.value)}
+                      className={inputClass}
+                    >
+                      <option value="">{t('Select a TikTok integration', '选择 TikTok integration')}</option>
+                      {postizTikTokIntegrations
+                        .filter((integration) => !integration.disabled)
+                        .map((integration) => (
+                          <option key={integration.id} value={integration.id}>
+                            {integration.providerIdentifier || 'unknown'} · {integration.name || integration.profile || integration.id}
+                          </option>
+                        ))}
+                    </select>
+                  )}
+                </Field>
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-surface border border-line">
+                  <Info size={13} className="text-ink-5 mt-0.5 shrink-0" />
+                  <p className="text-[12px] text-ink-4 leading-snug">
+                    {t('Postiz Upload sends the carousel to TikTok inbox. You still finish editing and publish manually on your phone.', 'Postiz Upload 会把轮播发送到 TikTok inbox。你仍然需要在手机上完成编辑并手动发布。')}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <Field
+                  label={t('post-bridge API key', 'post-bridge API Key')}
+                  hint={<>{t('Handles scheduling, posting & analytics. Get one at', '负责排程、发布和数据统计。去')} <PostBridgeLink>post-bridge.com</PostBridgeLink> {t('get one.', '获取。')}</>}
+                >
+                  <input
+                    value={postbridge}
+                    onChange={(e) => setPostbridge(e.target.value)}
+                    placeholder="pb_..."
+                    className={`${inputClass} font-mono`}
+                  />
+                  <TestBadge ok={test?.postbridge} error={test?.errors?.postbridge} />
+                </Field>
+
+                {accounts.length === 0 ? (
+                  <p className="text-[12px] text-ink-5">
+                    {t('No connected accounts yet. Add your post-bridge key, hit Test, then connect accounts at', '还没有连接账号。先填 post-bridge Key 并测试，然后去')} <PostBridgeLink>post-bridge.com</PostBridgeLink> {t("connect accounts — they'll appear here.", '连接账号，之后会显示在这里。')}
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {accounts.map((a) => (
+                      <label
+                        key={a.id}
+                        className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-line bg-card cursor-pointer hover:border-line-2"
+                      >
+                        <input type="checkbox" checked={selected.includes(a.id)} onChange={() => toggleAccount(a.id)} />
+                        <span className="text-[13px] text-ink font-medium">{a.username}</span>
+                        <span className="text-[11px] text-ink-5 uppercase tracking-wide">{a.platform}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                <Field label={t('Default mode', '默认模式')}>
+                  <div className="flex gap-2">
+                    <Button variant={mode === 'draft' ? 'primary' : 'secondary'} onClick={() => setMode('draft')}>
+                      {t('Save as draft', '保存为草稿')}
+                    </Button>
+                    <Button variant={mode === 'schedule' ? 'primary' : 'secondary'} onClick={() => setMode('schedule')}>
+                      {t('Schedule directly', '直接排程')}
+                    </Button>
+                  </div>
+                </Field>
+                <DraftNote />
+              </div>
+            )}
+          </Section>
+
+          {/* AI + tools (global) */}
+          <Section
+            title={t('AI & tools', 'AI 和工具')}
+            description={t('Shared across all projects. Stored locally on this computer.', '所有项目共用，保存在本机。')}
+          >
             <Field label={t('AI provider', 'AI 服务商')} hint={t("Use OpenRouter's model catalog, or connect directly to DeepSeek with your DeepSeek key.", '可以用 OpenRouter 模型目录，也可以直接填 DeepSeek Key。')}>
               <div className="flex gap-2">
                 <Button
@@ -353,73 +454,6 @@ export function SettingsView({
                 <option value="deepseek-reasoner">DeepSeek Reasoner (legacy)</option>
               </datalist>
             </Field>
-          </Section>
-
-          {/* Posting defaults (per project) */}
-          <Section
-            title={t('Posting defaults', '发布默认值')}
-            description={t('Choose defaults for Postbridge automation and Postiz TikTok upload mode.', '设置 Postbridge 自动发布和 Postiz TikTok Upload 模式的默认值。')}
-          >
-            <Field label={t('Default Postiz TikTok integration', '默认 Postiz TikTok integration')} hint={t('This is the TikTok channel Postiz will use for Upload without posting. Refresh it with Test connection after connecting TikTok in Postiz.', '这是 Postiz 用来 Upload without posting 的 TikTok channel。在 Postiz 连接 TikTok 后点测试连接刷新。')}>
-              {postizIntegrations.length === 0 ? (
-                <p className="text-[12px] text-ink-5">
-                  {t('No Postiz integrations loaded yet. Add your Postiz API key, save/test, then connect TikTok in Postiz.', '还没有加载到 Postiz integrations。先填 Postiz API Key 并保存/测试，然后去 Postiz 连接 TikTok。')}
-                </p>
-              ) : postizTikTokIntegrations.length === 0 ? (
-                <p className="text-[12px] text-ink-5">
-                  {t('Postiz is connected, but no TikTok integration was found. Connect TikTok inside Postiz first.', 'Postiz 已连接，但没有找到 TikTok integration。请先在 Postiz 里连接 TikTok。')}
-                </p>
-              ) : (
-                <select
-                  value={postizIntegrationId}
-                  onChange={(e) => setPostizIntegrationId(e.target.value)}
-                  className={inputClass}
-                >
-                  <option value="">{t('Select a TikTok integration', '选择 TikTok integration')}</option>
-                  {postizTikTokIntegrations
-                    .filter((integration) => !integration.disabled)
-                    .map((integration) => (
-                      <option key={integration.id} value={integration.id}>
-                        {integration.providerIdentifier || 'unknown'} · {integration.name || integration.profile || integration.id}
-                      </option>
-                    ))}
-                </select>
-              )}
-            </Field>
-
-            <div className="pt-2">
-              <h3 className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-2">{t('Postbridge defaults', 'Postbridge 默认值')}</h3>
-            </div>
-            {accounts.length === 0 ? (
-              <p className="text-[12px] text-ink-5">
-                {t('No connected accounts yet. Add your post-bridge key above, hit Test, then connect accounts at', '还没有连接账号。先填 post-bridge Key 并测试，然后去')} <PostBridgeLink>post-bridge.com</PostBridgeLink> {t("connect accounts — they'll appear here.", '连接账号，之后会显示在这里。')}
-              </p>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                {accounts.map((a) => (
-                  <label
-                    key={a.id}
-                    className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-line bg-card cursor-pointer hover:border-line-2"
-                  >
-                    <input type="checkbox" checked={selected.includes(a.id)} onChange={() => toggleAccount(a.id)} />
-                    <span className="text-[13px] text-ink font-medium">{a.username}</span>
-                    <span className="text-[11px] text-ink-5 uppercase tracking-wide">{a.platform}</span>
-                  </label>
-                ))}
-              </div>
-            )}
-
-            <Field label={t('Default mode', '默认模式')}>
-              <div className="flex gap-2">
-                <Button variant={mode === 'draft' ? 'primary' : 'secondary'} onClick={() => setMode('draft')}>
-                  {t('Save as draft', '保存为草稿')}
-                </Button>
-                <Button variant={mode === 'schedule' ? 'primary' : 'secondary'} onClick={() => setMode('schedule')}>
-                  {t('Schedule directly', '直接排程')}
-                </Button>
-              </div>
-            </Field>
-            <DraftNote />
           </Section>
 
           {/* Background packs (per project) */}
