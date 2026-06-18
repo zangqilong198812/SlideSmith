@@ -223,7 +223,7 @@ app.post('/api/postiz/publish', h(async (req, res) => {
         name: `${id || 'slide'}-${i + 1}.png`,
       })
       schedLog.progress(++done, slides.length, 'slides uploaded to Postiz')
-      return media.path
+      return media
     })
   )
 
