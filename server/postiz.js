@@ -59,6 +59,20 @@ export async function listIntegrations(apiKey, base) {
   }))
 }
 
+export async function listPosts(apiKey, base) {
+  const now = new Date()
+  const start = new Date(now)
+  start.setDate(now.getDate() - 30)
+  const end = new Date(now)
+  end.setDate(now.getDate() + 60)
+  const params = new URLSearchParams({
+    startDate: start.toISOString(),
+    endDate: end.toISOString(),
+  })
+  const body = await postiz(apiKey, base, `/posts?${params}`)
+  return Array.isArray(body) ? body : body?.posts || body?.data || []
+}
+
 export async function validatePostiz(apiKey, base) {
   await listIntegrations(apiKey, base)
   return true

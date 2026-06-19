@@ -30,6 +30,7 @@ export default function App() {
 
   const hasAiKey = !!config?.keys.openrouter;
   const hasPostbridge = !!config?.keys.postbridge;
+  const hasPostiz = !!config?.keys.postiz;
   const hasApify = !!config?.keys.apify;
   const activeProject: Project | undefined = config?.projects.find(
     (p) => p.id === config.activeProjectId
@@ -254,8 +255,8 @@ export default function App() {
           />
         )}
         {activeView === 'library' && <LibraryView hasApify={hasApify} />}
-        {activeView === 'schedule' && <ScheduleView configured={hasPostbridge} />}
-        {activeView === 'results' && <ResultsView configured={hasPostbridge} />}
+        {activeView === 'schedule' && <ScheduleView postbridgeConfigured={hasPostbridge} postizConfigured={hasPostiz} />}
+        {activeView === 'results' && <ResultsView postbridgeConfigured={hasPostbridge} postizConfigured={hasPostiz} />}
         {activeView === 'brain' && <BrainView brain={activeProject.brain} onChange={saveBrain} />}
         {activeView === 'settings' && (
           <SettingsView

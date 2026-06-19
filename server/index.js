@@ -23,7 +23,7 @@ import {
   CONFIG_DIR,
 } from './store.js'
 import { listAccounts, listPosts, listAnalytics, syncAnalytics, uploadMedia, createPost } from './postbridge.js'
-import { validatePostiz, listIntegrations as listPostizIntegrations, uploadPostizMedia, createPostizPost, buildTikTokUploadPayload } from './postiz.js'
+import { validatePostiz, listIntegrations as listPostizIntegrations, listPosts as listPostizPosts, uploadPostizMedia, createPostizPost, buildTikTokUploadPayload } from './postiz.js'
 import { generateSlideshows } from './generate.js'
 import { listModels, validateKey } from './openrouter.js'
 import { listLibrary, listPacks, scrapePinterest, removeScraped, getScrapedFile } from './library.js'
@@ -203,6 +203,11 @@ app.get('/api/accounts', h(async (_req, res) => {
 app.get('/api/postiz/integrations', h(async (_req, res) => {
   const { keys, postizBaseUrl } = getConfig()
   res.json(await listPostizIntegrations(keys.postiz, postizBaseUrl))
+}))
+
+app.get('/api/postiz/posts', h(async (_req, res) => {
+  const { keys, postizBaseUrl } = getConfig()
+  res.json(await listPostizPosts(keys.postiz, postizBaseUrl))
 }))
 
 app.post('/api/postiz/publish', h(async (req, res) => {

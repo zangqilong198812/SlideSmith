@@ -92,6 +92,18 @@ export interface PostizIntegration {
   disabled?: boolean;
 }
 
+export interface PostizPost {
+  id: string;
+  content: string;
+  publishDate: string | null;
+  state: string;
+  releaseUrl: string | null;
+  releaseId: string | null;
+  creationMethod: string;
+  integrationName: string;
+  integrationProvider: string;
+}
+
 // Shapes returned by post-bridge (mapped in lib/api.ts).
 export interface ScheduledPost {
   id: string;

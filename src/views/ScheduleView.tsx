@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, FileEdit, CheckCircle2, Clock, RefreshCw } from 'lucide-react';
-import type { ScheduledPost } from '../types';
+import { Loader2, FileEdit, CheckCircle2, Clock, RefreshCw, ExternalLink } from 'lucide-react';
+import type { ScheduledPost, PostizPost } from '../types';
 import { ViewHeader } from '../components/ViewHeader';
-import { getScheduledPosts } from '../lib/api';
+import { getPostizPosts, getScheduledPosts } from '../lib/api';
 import { ImageLightbox } from '../components/Lightbox';
 import { useT } from '../i18n';
 
 interface ScheduleViewProps {
-  configured: boolean;
+  postbridgeConfigured: boolean;
+  postizConfigured: boolean;
 }
 
 function dayKey(p: ScheduledPost) {
@@ -38,25 +39,35 @@ const statusMeta: Record<string, { icon: typeof Clock; className: string; label:
   posted: { icon: CheckCircle2, className: 'text-emerald-600', label: 'Posted' },
 };
 
-export function ScheduleView({ configured }: ScheduleViewProps) {
+type Channel = 'postiz' | 'postbridge';
+
+function stripHtml(value: string) {
+  return value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+export function ScheduleView({ postbridgeConfigured, postizConfigured }: ScheduleViewProps) {
   const t = useT();
+  const [channel, setChannel] = useState<Channel>(postizConfigured ? 'postiz' : 'postbridge');
   const [posts, setPosts] = useState<ScheduledPost[] | null>(null);
+  const [postizPosts, setPostizPosts] = useState<PostizPost[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [preview, setPreview] = useState<{ images: string[]; index: number } | null>(null);
 
   const load = useCallback(async () => {
-    if (!configured) return;
+    if (channel === 'postbridge' && !postbridgeConfigured) return;
+    if (channel === 'postiz' && !postizConfigured) return;
     setRefreshing(true);
     setError(null);
     try {
-      setPosts(await getScheduledPosts());
+      if (channel === 'postiz') setPostizPosts(await getPostizPosts());
+      else setPosts(await getScheduledPosts());
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setRefreshing(false);
     }
-  }, [configured]);
+  }, [channel, postbridgeConfigured, postizConfigured]);
 
   useEffect(() => {
     void load();
@@ -77,9 +88,11 @@ export function ScheduleView({ configured }: ScheduleViewProps) {
     <>
       <ViewHeader
         title={t('Schedule', '排程')}
-        subtitle={t('Posts queued in post-bridge — it publishes them to your connected accounts at the scheduled time.', '已进入 post-bridge 队列的内容，会在设定时间发布。')}
+        subtitle={channel === 'postiz'
+          ? t('Posts created in Postiz. TikTok Upload still needs the phone inbox flow when Postiz runs it.', '已创建到 Postiz 的内容。TikTok Upload 到点后仍需手机 inbox 流程。')
+          : t('Posts queued in post-bridge — it publishes them to your connected accounts at the scheduled time.', '已进入 post-bridge 队列的内容，会在设定时间发布。')}
         right={
-          configured && (
+          ((channel === 'postiz' && postizConfigured) || (channel === 'postbridge' && postbridgeConfigured)) && (
             <button
               onClick={() => void load()}
               disabled={refreshing}
@@ -93,12 +106,28 @@ export function ScheduleView({ configured }: ScheduleViewProps) {
       />
       <div className="flex-1 overflow-y-auto p-8">
         <div className="max-w-3xl mx-auto space-y-6">
-          {!configured ? (
+          <ChannelTabs channel={channel} onChange={setChannel} />
+
+          {channel === 'postiz' ? (
+            !postizConfigured ? (
+              <Empty text={t('Add your Postiz API key in Settings to see Postiz posts.', '在设置里添加 Postiz API Key 后查看 Postiz 内容。')} />
+            ) : error ? (
+              <Empty text={error} />
+            ) : postizPosts === null ? (
+              <Loading text={t('Loading from Postiz…', '从 Postiz 加载中…')} />
+            ) : postizPosts.length === 0 ? (
+              <Empty text={t('No Postiz posts found in the current date window.', '当前时间范围内没有 Postiz 内容。')} />
+            ) : (
+              <div className="flex flex-col gap-2">
+                {postizPosts.map((post) => <PostizRow key={post.id} post={post} />)}
+              </div>
+            )
+          ) : !postbridgeConfigured ? (
             <Empty text={t('Add your post-bridge API key in Settings to see your scheduled posts.', '在设置里添加 post-bridge API Key 后查看排程。')} />
           ) : error ? (
             <Empty text={error} />
           ) : posts === null ? (
-            <Loading />
+            <Loading text={t('Loading from post-bridge…', '从 post-bridge 加载中…')} />
           ) : posts.length === 0 ? (
             <Empty text={t('Nothing scheduled yet. Approve a slideshow from the Queue to send it here.', '还没有排程内容。在队列里发送内容后会显示在这里。')} />
           ) : (
@@ -138,6 +167,48 @@ export function ScheduleView({ configured }: ScheduleViewProps) {
   );
 }
 
+function ChannelTabs({ channel, onChange }: { channel: Channel; onChange: (channel: Channel) => void }) {
+  return (
+    <div className="grid grid-cols-2 gap-2 p-1 rounded-xl border border-line bg-surface">
+      {(['postiz', 'postbridge'] as Channel[]).map((item) => (
+        <button
+          key={item}
+          type="button"
+          onClick={() => onChange(item)}
+          className={`h-10 rounded-lg text-[13px] font-medium transition-colors ${
+            channel === item ? 'bg-card border border-line text-ink shadow-sm' : 'text-ink-5 hover:text-ink'
+          }`}
+        >
+          {item === 'postiz' ? 'Postiz' : 'Postbridge'}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PostizRow({ post }: { post: PostizPost }) {
+  const status = post.state || 'UNKNOWN';
+  const isPublished = status.toUpperCase() === 'PUBLISHED';
+  const when = post.publishDate ? new Date(post.publishDate).toLocaleString() : '—';
+  return (
+    <div className="bg-card border border-line rounded-xl p-4 flex items-center gap-4 hover:border-line-2 transition-colors">
+      <div className="w-28 shrink-0">
+        <div className="text-[11px] text-ink-6 uppercase tracking-wide">{post.integrationName || post.integrationProvider || 'Postiz'}</div>
+        <div className={`text-[12px] font-semibold mt-1 ${isPublished ? 'text-emerald-600' : 'text-ink-4'}`}>{status}</div>
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[12px] text-ink-4 truncate">{stripHtml(post.content) || '(no content)'}</div>
+        <div className="text-[11px] text-ink-6 mt-1">{when}</div>
+      </div>
+      {post.releaseUrl && (
+        <a href={post.releaseUrl} target="_blank" rel="noreferrer" className="shrink-0 text-ink-5 hover:text-ink">
+          <ExternalLink size={14} />
+        </a>
+      )}
+    </div>
+  );
+}
+
 function ScheduledRow({ post, onPreview }: { post: ScheduledPost; onPreview: (index: number) => void }) {
   const meta = statusMeta[post.status] || statusMeta.scheduled;
   const Icon = meta.icon;
@@ -164,10 +235,10 @@ function ScheduledRow({ post, onPreview }: { post: ScheduledPost; onPreview: (in
   );
 }
 
-function Loading() {
+function Loading({ text }: { text: string }) {
   return (
     <div className="flex items-center justify-center py-16 text-ink-5 text-[13px] gap-2">
-      <Loader2 size={14} className="animate-spin" /> Loading from post-bridge…
+      <Loader2 size={14} className="animate-spin" /> {text}
     </div>
   );
 }

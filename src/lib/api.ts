@@ -11,6 +11,7 @@ import type {
   ModelOption,
   GenerateStyle,
   PostizIntegration,
+  PostizPost,
   LibraryImage,
   LibraryPack,
 } from '../types';
@@ -97,6 +98,24 @@ export const deleteLibraryImage = (id: string) =>
 export const getAccounts = () => req<SocialAccount[]>('/accounts');
 
 export const getPostizIntegrations = () => req<PostizIntegration[]>('/postiz/integrations');
+
+export async function getPostizPosts(): Promise<PostizPost[]> {
+  const raw = await req<Array<Record<string, unknown>>>('/postiz/posts');
+  return raw.map((p) => {
+    const integration = (p.integration || {}) as Record<string, unknown>;
+    return {
+      id: String(p.id || ''),
+      content: String(p.content || ''),
+      publishDate: (p.publishDate as string) || null,
+      state: String(p.state || ''),
+      releaseUrl: (p.releaseURL as string) || null,
+      releaseId: (p.releaseId as string) || null,
+      creationMethod: String(p.creationMethod || ''),
+      integrationName: String(integration.name || ''),
+      integrationProvider: String(integration.providerIdentifier || ''),
+    };
+  });
+}
 
 export interface SchedulePayload {
   id: string;
