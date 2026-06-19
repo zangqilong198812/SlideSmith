@@ -134,6 +134,7 @@ export default function App() {
         caption,
         slides,
         integrationId: opts.postizIntegrationId || activeProject.defaults.postizIntegrationId || '',
+        scheduledAt: opts.scheduledAt,
       });
     } else {
       await api.schedule({

@@ -212,7 +212,7 @@ app.get('/api/postiz/posts', h(async (_req, res) => {
 
 app.post('/api/postiz/publish', h(async (req, res) => {
   const { keys, postizBaseUrl } = getConfig()
-  const { id, title, caption, slides, integrationId } = req.body || {}
+  const { id, title, caption, slides, integrationId, scheduledAt } = req.body || {}
   if (!integrationId) throw new Error('Pick a Postiz integration in Settings.')
   if (!Array.isArray(slides) || !slides.length) throw new Error('No slide images to upload.')
   if (slides.length > 35) throw new Error('TikTok photo posts support at most 35 images.')
@@ -237,6 +237,7 @@ app.post('/api/postiz/publish', h(async (req, res) => {
     caption,
     media: uploaded,
     title,
+    date: scheduledAt || undefined,
   }))
 
   if (id) removeFromQueue(getActiveProject().id, id)

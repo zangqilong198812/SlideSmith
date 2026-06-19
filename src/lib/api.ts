@@ -135,6 +135,7 @@ export interface PostizPublishPayload {
   caption: string;
   slides: string[];
   integrationId: string;
+  scheduledAt?: string | null;
 }
 
 export const publishToPostiz = (payload: PostizPublishPayload) =>

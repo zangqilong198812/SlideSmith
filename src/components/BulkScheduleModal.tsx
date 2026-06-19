@@ -78,7 +78,7 @@ export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, de
     setError(null);
     if (publisher === 'postiz' && !postizIntegrationId) return setError(t('Pick a Postiz TikTok integration in Settings first.', '请先在设置里选择 Postiz TikTok integration。'));
     if (publisher === 'postbridge' && !selectedAccounts.length) return setError(t('Pick at least one account.', '至少选择一个账号。'));
-    if (publisher === 'postbridge' && mode === 'schedule') {
+    if (publisher === 'postiz' || (publisher === 'postbridge' && mode === 'schedule')) {
       const start = new Date(startLocal).getTime();
       if (Number.isNaN(start)) return setError(t('Pick a valid start time.', '请选择有效的开始时间。'));
       if (start < Date.now() - 60_000) return setError(t('Start time is in the past.', '开始时间已经过去。'));
@@ -115,6 +115,7 @@ export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, de
               caption,
               slides,
               integrationId: postizIntegrationId,
+              scheduledAt: new Date(startMs + i * stepMs).toISOString(),
             });
           } else {
             await scheduleOne({
@@ -163,7 +164,7 @@ export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, de
               {publisher === 'postiz' && doneCount === 0
                 ? t('Nothing reached Postiz. Check the failure details below.', '没有任何内容成功到达 Postiz。请看下面的失败原因。')
                 : publisher === 'postiz'
-                ? t('Open TikTok inbox on your phone to finish and publish manually.', '打开手机 TikTok inbox 完成编辑并手动发布。')
+                ? t('They were scheduled in Postiz. When each one runs, open TikTok inbox on your phone to finish and publish manually.', '已排程到 Postiz。每条到点后，打开手机 TikTok inbox 完成编辑并手动发布。')
                 : mode === 'schedule' ? t('post-bridge will publish them at their times.', 'post-bridge 会按时间发布。') : t('Find them in your post-bridge drafts.', '可在 post-bridge 草稿中查看。')}
             </p>
             {failures.length > 0 && (
@@ -234,7 +235,7 @@ export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, de
                     ))}
                   </select>
                 )}
-                <p className="text-[11px] text-ink-6 mt-1">{t('Each selected slideshow will be uploaded to TikTok inbox through Postiz for manual publishing.', '每条选中的轮播都会通过 Postiz 上传到 TikTok inbox，之后手动发布。')}</p>
+                <p className="text-[11px] text-ink-6 mt-1">{t('Each selected slideshow will be scheduled in Postiz, then sent to TikTok inbox when its time arrives.', '每条选中的轮播都会排程到 Postiz，到点后再发到 TikTok inbox。')}</p>
               </div>
             )}
 
@@ -265,7 +266,7 @@ export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, de
               </div>
             </div>}
 
-            {publisher === 'postbridge' && mode === 'schedule' && (
+            {(publisher === 'postiz' || (publisher === 'postbridge' && mode === 'schedule')) && (
               <div className="rounded-lg border border-line bg-surface p-3 space-y-3">
                 <div>
                   <label className="text-[10px] text-ink-6 uppercase tracking-wider mb-1 block">{t('Start at', '开始时间')}</label>
@@ -324,7 +325,7 @@ export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, de
                 onClick={submit}
                 disabled={busy}
               >
-                {busy ? t('Uploading…', '上传中…') : publisher === 'postiz' ? t(`Send ${slideshows.length} to Postiz`, `发送 ${slideshows.length} 条到 Postiz`) : mode === 'schedule' ? t(`Schedule ${slideshows.length}`, `排程 ${slideshows.length} 条`) : t(`Draft ${slideshows.length}`, `草稿 ${slideshows.length} 条`)}
+                {busy ? t('Uploading…', '上传中…') : publisher === 'postiz' ? t(`Schedule ${slideshows.length} to Postiz`, `排程 ${slideshows.length} 条到 Postiz`) : mode === 'schedule' ? t(`Schedule ${slideshows.length}`, `排程 ${slideshows.length} 条`) : t(`Draft ${slideshows.length}`, `草稿 ${slideshows.length} 条`)}
               </Button>
             </>
           )}
