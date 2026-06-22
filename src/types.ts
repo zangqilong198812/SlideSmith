@@ -3,7 +3,7 @@ export type ViewKey = 'queue' | 'library' | 'schedule' | 'results' | 'brain' | '
 export interface Slide {
   id: string;
   text: string;
-  layout?: 'classic' | 'notes';
+  layout?: 'classic' | 'notes' | 'showcase';
   // Generated slides have no source image — they're rendered from text over a
   // gradient. `imageUrl` is kept optional for backwards-compat / future use.
   imageUrl?: string;
@@ -13,7 +13,7 @@ export interface Slide {
   bgTo?: string;
 }
 
-export type GenerateStyle = 'classic' | 'notes';
+export type GenerateStyle = 'classic' | 'notes' | 'showcase';
 
 export interface Slideshow {
   id: string;
@@ -46,6 +46,7 @@ export interface Project {
   defaults: ProjectDefaults;
   imagePacks: string[]; // background packs generation draws from ([] = gradients only)
   finalSlideImageUrl?: string;
+  finalSlideImageUrls?: string[];
 }
 
 export interface AppConfig {
@@ -62,12 +63,13 @@ export interface LibraryImage {
   id: string;
   url: string;
   pack: string;
-  source: 'bundled' | 'scraped';
+  source: 'bundled' | 'scraped' | 'uploaded';
+  purpose?: 'background' | 'screenshot';
 }
 
 export interface LibraryPack {
   name: string;
-  source: 'bundled' | 'scraped';
+  source: 'bundled' | 'scraped' | 'uploaded';
   count: number;
   covers: string[];
 }

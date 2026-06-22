@@ -45,7 +45,7 @@ export const createProject = (name?: string) =>
 
 export const updateProject = (
   id: string,
-  patch: Partial<Pick<Project, 'name' | 'brain' | 'defaults' | 'imagePacks' | 'finalSlideImageUrl'>>
+  patch: Partial<Pick<Project, 'name' | 'brain' | 'defaults' | 'imagePacks' | 'finalSlideImageUrl' | 'finalSlideImageUrls'>>
 ) => req<AppConfig>(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(patch) });
 
 export const deleteProject = (id: string) =>
@@ -54,11 +54,11 @@ export const deleteProject = (id: string) =>
 export const activateProject = (id: string) =>
   req<AppConfig>(`/projects/${id}/activate`, { method: 'POST' });
 
-export const uploadFinalSlide = (projectId: string, dataUrl: string) =>
-  req<AppConfig>(`/projects/${projectId}/final-slide`, { method: 'POST', body: JSON.stringify({ dataUrl }) });
+export const uploadFinalSlide = (projectId: string, dataUrls: string[]) =>
+  req<AppConfig>(`/projects/${projectId}/final-slide`, { method: 'POST', body: JSON.stringify({ dataUrls }) });
 
-export const clearFinalSlide = (projectId: string) =>
-  req<AppConfig>(`/projects/${projectId}/final-slide`, { method: 'DELETE' });
+export const clearFinalSlide = (projectId: string, imageUrl?: string) =>
+  req<AppConfig>(`/projects/${projectId}/final-slide`, { method: 'DELETE', body: JSON.stringify({ imageUrl }) });
 
 export const testKeys = () =>
   req<{ postbridge: boolean; postiz: boolean; openrouter: boolean; apify: boolean; errors: Record<string, string> }>(
@@ -90,6 +90,12 @@ export const scrapePinterest = (searches: string[], count: number) =>
   req<{ added: number; found: number }>('/library/scrape', {
     method: 'POST',
     body: JSON.stringify({ searches, count }),
+  });
+
+export const uploadLibraryImages = (images: string[], purpose: 'background' | 'screenshot', pack?: string) =>
+  req<{ added: number; images: LibraryImage[]; library: LibraryImage[] }>('/library/upload', {
+    method: 'POST',
+    body: JSON.stringify({ images, purpose, pack }),
   });
 
 export const deleteLibraryImage = (id: string) =>

@@ -23,10 +23,10 @@ import {
   CONFIG_DIR,
 } from './store.js'
 import { listAccounts, listPosts, listAnalytics, syncAnalytics, uploadMedia, createPost } from './postbridge.js'
-import { validatePostiz, listIntegrations as listPostizIntegrations, listPosts as listPostizPosts, uploadPostizMedia, createPostizPost, buildTikTokUploadPayload } from './postiz.js'
+import { validatePostiz, listIntegrations as listPostizIntegrations, listPosts as listPostizPosts, uploadPostizMedia, createPostizPost, buildPostizPayload } from './postiz.js'
 import { generateSlideshows } from './generate.js'
 import { listModels, validateKey } from './openrouter.js'
-import { listLibrary, listPacks, scrapePinterest, removeScraped, getScrapedFile } from './library.js'
+import { listLibrary, listPacks, scrapePinterest, uploadLibraryImages, removeScraped, getScrapedFile } from './library.js'
 import { logger } from './log.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -67,8 +67,14 @@ app.post('/api/projects', h(async (req, res) => res.json(createProject(req.body?
 app.put('/api/projects/:id', h(async (req, res) => res.json(updateProject(req.params.id, req.body || {}))))
 app.delete('/api/projects/:id', h(async (req, res) => res.json(deleteProject(req.params.id))))
 app.post('/api/projects/:id/activate', h(async (req, res) => res.json(setActiveProject(req.params.id))))
-app.post('/api/projects/:id/final-slide', h(async (req, res) => res.json(saveFinalSlide(req.params.id, req.body?.dataUrl))))
-app.delete('/api/projects/:id/final-slide', h(async (req, res) => res.json(clearFinalSlide(req.params.id))))
+app.post('/api/projects/:id/final-slide', h(async (req, res) => res.json(saveFinalSlide(req.params.id, req.body?.dataUrls || req.body?.dataUrl))))
+app.delete('/api/projects/:id/final-slide', h(async (req, res) => res.json(clearFinalSlide(req.params.id, req.body?.imageUrl))))
+app.get('/api/final-slide/:id/:imageId', h(async (req, res) => {
+  const file = getFinalSlideFile(req.params.id, req.params.imageId)
+  if (!file) return res.status(404).end()
+  const type = file.ext === '.webp' ? 'image/webp' : file.ext === '.png' ? 'image/png' : 'image/jpeg'
+  res.type(type).sendFile(file.path, { dotfiles: 'allow' })
+}))
 app.get('/api/final-slide/:id', h(async (req, res) => {
   const file = getFinalSlideFile(req.params.id)
   if (!file) return res.status(404).end()
@@ -115,16 +121,24 @@ app.post('/api/generate', h(async (req, res) => {
   const { keys, aiBaseUrl, model } = getConfig()
   const project = getActiveProject()
   const count = Math.min(Math.max(Math.round(Number(req.body?.count) || 4), 1), 100)
-  const style = req.body?.style === 'notes' ? 'notes' : 'classic'
+  const requestedStyle = req.body?.style
+  const style = requestedStyle === 'notes' || requestedStyle === 'showcase' ? requestedStyle : 'classic'
   const slideshows = await generateSlideshows({ apiKey: keys.openrouter, baseUrl: aiBaseUrl, model, brain: project.brain, count, style })
 
   // Auto-assign background images. A per-batch `packs` override (from the
   // Generate modal) wins; otherwise fall back to the project's saved packs.
   // Empty selection → slides keep their gradients.
   const packs = Array.isArray(req.body?.packs) ? req.body.packs : project.imagePacks || []
-  const pool = packs.length ? listLibrary().filter((i) => packs.includes(i.pack)) : []
+  const library = listLibrary()
+  const screenshotPool = library.filter((i) => i.purpose === 'screenshot')
+  const backgroundPool = packs.length ? library.filter((i) => i.purpose !== 'screenshot' && packs.includes(i.pack)) : []
+  const pool = style === 'showcase' && screenshotPool.length ? screenshotPool : backgroundPool
   if (pool.length) {
-    genLog.step(`assigning backgrounds from ${packs.length} pack${packs.length === 1 ? '' : 's'} (${pool.length} images)`)
+    if (style === 'showcase' && screenshotPool.length) {
+      genLog.step(`assigning Showcase screenshots (${pool.length} images)`)
+    } else {
+      genLog.step(`assigning backgrounds from ${packs.length} pack${packs.length === 1 ? '' : 's'} (${pool.length} images)`)
+    }
     for (const show of slideshows) {
       const used = new Set()
       for (const slide of show.slides) {
@@ -137,16 +151,21 @@ app.post('/api/generate', h(async (req, res) => {
       }
     }
   }
-  if (project.finalSlideImageUrl) {
+  const finalSlideImageUrls = Array.isArray(project.finalSlideImageUrls)
+    ? project.finalSlideImageUrls
+    : (project.finalSlideImageUrl ? [project.finalSlideImageUrl] : [])
+  if (finalSlideImageUrls.length) {
     for (const show of slideshows) {
-      show.slides.push({
-        id: `${show.id}-final`,
-        text: '',
-        imageUrl: project.finalSlideImageUrl,
-        imageFit: 'contain',
-        darkOverlay: false,
-        bgFrom: '#ffffff',
-        bgTo: '#ffffff',
+      finalSlideImageUrls.forEach((imageUrl, index) => {
+        show.slides.push({
+          id: `${show.id}-final-${index + 1}`,
+          text: '',
+          imageUrl,
+          imageFit: 'contain',
+          darkOverlay: false,
+          bgFrom: '#ffffff',
+          bgTo: '#ffffff',
+        })
       })
     }
   }
@@ -183,6 +202,11 @@ app.post('/api/library/scrape', h(async (req, res) => {
   res.json(await scrapePinterest({ apiKey: keys.apify, actor: pinterestActor, searches, count }))
 }))
 
+app.post('/api/library/upload', h(async (req, res) => {
+  const { images, purpose, pack } = req.body || {}
+  res.json(uploadLibraryImages({ images, purpose, pack }))
+}))
+
 app.delete('/api/library/:id', h(async (req, res) => res.json(removeScraped(req.params.id))))
 
 app.get('/api/library/img/:id', h(async (req, res) => {
@@ -215,9 +239,12 @@ app.post('/api/postiz/publish', h(async (req, res) => {
   const { id, title, caption, slides, integrationId, scheduledAt } = req.body || {}
   if (!integrationId) throw new Error('Pick a Postiz integration in Settings.')
   if (!Array.isArray(slides) || !slides.length) throw new Error('No slide images to upload.')
-  if (slides.length > 35) throw new Error('TikTok photo posts support at most 35 images.')
+  const integrations = await listPostizIntegrations(keys.postiz, postizBaseUrl)
+  const integration = integrations.find((item) => item.id === integrationId)
+  if (!integration) throw new Error('Postiz integration was not found. Refresh Settings and pick it again.')
+  if (integration.providerIdentifier.toLowerCase() === 'tiktok' && slides.length > 35) throw new Error('TikTok photo posts support at most 35 images.')
 
-  schedLog.start(`Uploading ${id || 'slideshow'} to Postiz TikTok inbox · ${slides.length} slide${slides.length === 1 ? '' : 's'}`)
+  schedLog.start(`Uploading ${id || 'slideshow'} to Postiz ${integration.providerIdentifier || 'integration'} · ${slides.length} slide${slides.length === 1 ? '' : 's'}`)
   let done = 0
   const uploaded = await Promise.all(
     slides.map(async (slide, i) => {
@@ -232,8 +259,9 @@ app.post('/api/postiz/publish', h(async (req, res) => {
     })
   )
 
-  const post = await createPostizPost(keys.postiz, postizBaseUrl, buildTikTokUploadPayload({
+  const post = await createPostizPost(keys.postiz, postizBaseUrl, buildPostizPayload({
     integrationId,
+    providerIdentifier: integration.providerIdentifier,
     caption,
     media: uploaded,
     title,
@@ -241,7 +269,7 @@ app.post('/api/postiz/publish', h(async (req, res) => {
   }))
 
   if (id) removeFromQueue(getActiveProject().id, id)
-  schedLog.ok('Done — uploaded to Postiz for TikTok inbox publishing')
+  schedLog.ok('Done — scheduled in Postiz')
   res.json({ post })
 }))
 

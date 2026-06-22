@@ -28,9 +28,9 @@ function toLocalInput(d: Date): string {
 
 export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, defaults, onClose, onDone }: BulkScheduleModalProps) {
   const t = useT();
-  const tiktokIntegrations = postizIntegrations.filter((integration) => integration.providerIdentifier.toLowerCase() === 'tiktok' && !integration.disabled);
+  const availablePostizIntegrations = postizIntegrations.filter((integration) => !integration.disabled);
   const [publisher, setPublisher] = useState<'postiz' | 'postbridge'>(defaults.postizIntegrationId ? 'postiz' : 'postbridge');
-  const [postizIntegrationId, setPostizIntegrationId] = useState(defaults.postizIntegrationId || tiktokIntegrations[0]?.id || '');
+  const [postizIntegrationId, setPostizIntegrationId] = useState(defaults.postizIntegrationId || availablePostizIntegrations[0]?.id || '');
   const [selectedAccounts, setSelectedAccounts] = useState<number[]>(defaults.socialAccountIds);
   const [mode, setMode] = useState<'schedule' | 'draft'>(defaults.mode === 'draft' ? 'draft' : 'schedule');
   const [hours, setHours] = useState(6);
@@ -57,8 +57,8 @@ export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, de
   }, []);
 
   useEffect(() => {
-    if (!postizIntegrationId && tiktokIntegrations[0]?.id) setPostizIntegrationId(tiktokIntegrations[0].id);
-  }, [postizIntegrationId, tiktokIntegrations]);
+    if (!postizIntegrationId && availablePostizIntegrations[0]?.id) setPostizIntegrationId(availablePostizIntegrations[0].id);
+  }, [postizIntegrationId, availablePostizIntegrations]);
 
   const resetStartAfterLast = (h: number) => {
     const base = lastScheduledMs ?? Date.now();
@@ -76,7 +76,7 @@ export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, de
 
   const submit = async () => {
     setError(null);
-    if (publisher === 'postiz' && !postizIntegrationId) return setError(t('Pick a Postiz TikTok integration in Settings first.', '请先在设置里选择 Postiz TikTok integration。'));
+    if (publisher === 'postiz' && !postizIntegrationId) return setError(t('Pick a Postiz integration in Settings first.', '请先在设置里选择 Postiz integration。'));
     if (publisher === 'postbridge' && !selectedAccounts.length) return setError(t('Pick at least one account.', '至少选择一个账号。'));
     if (publisher === 'postiz' || (publisher === 'postbridge' && mode === 'schedule')) {
       const start = new Date(startLocal).getTime();
@@ -164,7 +164,7 @@ export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, de
               {publisher === 'postiz' && doneCount === 0
                 ? t('Nothing reached Postiz. Check the failure details below.', '没有任何内容成功到达 Postiz。请看下面的失败原因。')
                 : publisher === 'postiz'
-                ? t('They were scheduled in Postiz. When each one runs, open TikTok inbox on your phone to finish and publish manually.', '已排程到 Postiz。每条到点后，打开手机 TikTok inbox 完成编辑并手动发布。')
+                ? t('They were scheduled in Postiz. TikTok items still use inbox upload; simpler platforms publish through Postiz.', '已排程到 Postiz。TikTok 仍走 inbox upload；简单平台由 Postiz 发布。')
                 : mode === 'schedule' ? t('post-bridge will publish them at their times.', 'post-bridge 会按时间发布。') : t('Find them in your post-bridge drafts.', '可在 post-bridge 草稿中查看。')}
             </p>
             {failures.length > 0 && (
@@ -202,7 +202,7 @@ export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, de
                   }`}
                 >
                   <span className="block text-[13px] font-semibold">Postiz</span>
-                  <span className={`block text-[11px] mt-0.5 ${publisher === 'postiz' ? 'text-bg/70' : 'text-ink-6'}`}>{t('TikTok inbox upload', 'TikTok inbox 上传')}</span>
+                  <span className={`block text-[11px] mt-0.5 ${publisher === 'postiz' ? 'text-bg/70' : 'text-ink-6'}`}>{t('Postiz schedule', 'Postiz 排程')}</span>
                 </button>
                 <button
                   onClick={() => setPublisher('postbridge')}
@@ -219,9 +219,9 @@ export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, de
 
             {publisher === 'postiz' && (
               <div>
-                <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">{t('Postiz TikTok integration', 'Postiz TikTok integration')}</label>
-                {tiktokIntegrations.length === 0 ? (
-                  <p className="text-[12px] text-ink-5">{t('No TikTok integration loaded from Postiz. Add your Postiz key in Settings and connect TikTok inside Postiz.', '没有从 Postiz 加载到 TikTok integration。请在设置里添加 Postiz Key，并在 Postiz 里连接 TikTok。')}</p>
+                <label className="text-[11px] text-ink-5 uppercase tracking-widest font-semibold mb-1.5 block">{t('Postiz integration', 'Postiz integration')}</label>
+                {availablePostizIntegrations.length === 0 ? (
+                  <p className="text-[12px] text-ink-5">{t('No integration loaded from Postiz. Add your Postiz key in Settings and connect a channel inside Postiz.', '没有从 Postiz 加载到 integration。请在设置里添加 Postiz Key，并在 Postiz 里连接平台。')}</p>
                 ) : (
                   <select
                     value={postizIntegrationId}
@@ -229,13 +229,13 @@ export function BulkScheduleModal({ slideshows, accounts, postizIntegrations, de
                     disabled={busy}
                     className="w-full h-9 bg-card border border-line rounded-lg px-3 text-[13px] text-ink outline-none focus:border-ink-7"
                   >
-                    <option value="">{t('Select TikTok', '选择 TikTok')}</option>
-                    {tiktokIntegrations.map((integration) => (
-                      <option key={integration.id} value={integration.id}>{integration.name || integration.profile || integration.id}</option>
+                    <option value="">{t('Select Postiz channel', '选择 Postiz 平台')}</option>
+                    {availablePostizIntegrations.map((integration) => (
+                      <option key={integration.id} value={integration.id}>{integration.providerIdentifier || 'unknown'} · {integration.name || integration.profile || integration.id}</option>
                     ))}
                   </select>
                 )}
-                <p className="text-[11px] text-ink-6 mt-1">{t('Each selected slideshow will be scheduled in Postiz, then sent to TikTok inbox when its time arrives.', '每条选中的轮播都会排程到 Postiz，到点后再发到 TikTok inbox。')}</p>
+                <p className="text-[11px] text-ink-6 mt-1">{t('Each selected slideshow will be scheduled in Postiz. TikTok uses inbox upload; simpler platforms like Threads publish through Postiz.', '每条选中的轮播都会排程到 Postiz。TikTok 走 inbox upload；Threads 这类简单平台由 Postiz 发布。')}</p>
               </div>
             )}
 

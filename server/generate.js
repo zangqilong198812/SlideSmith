@@ -159,8 +159,68 @@ Quality bar:
 Return ONLY the JSON object.`
 }
 
+function buildShowcasePrompt(brain, count) {
+  return `You write native TikTok/Instagram carousel slideshows in a polished "device setup showcase" style.
+
+The visual template will show a blurred full-screen background, a centered phone/product screenshot,
+a bold title at the top, and one short explanatory line near the bottom. Your job is to write
+short labels that make each slide feel like a useful walkthrough, not an ad.
+
+Account context:
+- Niche: ${brain.niche || '(unspecified)'}
+- App / brand: ${brain.appName || '(unspecified)'} — ${brain.appDescription || ''}
+- Audience: ${brain.audience || '(unspecified)'}
+
+What's working for this account (style memory — respect this closely):
+${brain.styleMemory || '(none yet — use proven short-form patterns)'}
+
+Core rules:
+- Each slideshow should feel like "my setup", "how I organize this", or "the feature I actually use".
+- Slide titles must be concrete UI/location labels: "Today View", "Lock Screen Widget", "Home Screen Setup", "Quick Capture", "Calendar Button".
+- Keep each title under 5 words.
+- The second line should be one simple benefit or observation, max 14 words.
+- Use practical creator-native wording, not marketing language.
+- Mention the app only when it feels like a natural label or soft helper.
+- Do not repeat the same feature across the batch.
+
+Write ${count} distinct slideshows. Respond with a JSON object of this exact shape:
+{
+  "slideshows": [
+    {
+      "hook": "short setup-style hook, max 8 words",
+      "slides": [
+        {
+          "layout": "showcase",
+          "text": "Top Title\\nshort bottom line"
+        },
+        {
+          "layout": "showcase",
+          "text": "Second Screen\\nshort bottom line"
+        },
+        {
+          "layout": "showcase",
+          "text": "Follow For More\\nshort CTA line"
+        }
+      ],
+      "caption": "short native caption, no hard sell, 0-1 emoji",
+      "hashtags": ["three", "specific", "hashtags"],
+      "rationale": "one sentence explaining the setup angle and why it should earn retention"
+    }
+  ]
+}
+
+Quality bar:
+- If a title sounds like an ad benefit, rewrite it as a UI/location label.
+- If a line is longer than 14 words, shorten it.
+- If the slideshow could fit any app without changing a word, rewrite it.
+
+Return ONLY the JSON object.`
+}
+
 function buildPrompt(brain, count, style) {
-  return style === 'notes' ? buildNotesPrompt(brain, count) : buildClassicPrompt(brain, count)
+  if (style === 'notes') return buildNotesPrompt(brain, count)
+  if (style === 'showcase') return buildShowcasePrompt(brain, count)
+  return buildClassicPrompt(brain, count)
 }
 
 // Generate in small batches so big counts don't overflow the model's output /
@@ -173,7 +233,7 @@ function normalizeSlide(rawSlide, fallbackLayout = 'classic') {
   }
   return {
     text: String(rawSlide?.text || ''),
-    layout: rawSlide?.layout === 'notes' ? 'notes' : fallbackLayout,
+    layout: rawSlide?.layout === 'notes' || rawSlide?.layout === 'showcase' ? rawSlide.layout : fallbackLayout,
   }
 }
 
@@ -209,7 +269,7 @@ export async function generateSlideshows({ apiKey, baseUrl, model, brain, count 
       rationale: s.rationale || '',
       createdAt: new Date(stamp).toISOString(),
       slides: (s.slides || []).map((rawSlide, j) => {
-        const slide = normalizeSlide(rawSlide, style === 'notes' && j > 0 ? 'notes' : 'classic')
+        const slide = normalizeSlide(rawSlide, style === 'notes' && j > 0 ? 'notes' : style === 'showcase' ? 'showcase' : 'classic')
         return {
           id: `slide-${stamp}-${i}-${j}`,
           text: slide.text,

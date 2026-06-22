@@ -7,7 +7,7 @@
 // global. The queue (generated-but-unscheduled drafts) is per project.
 import { homedir } from 'node:os'
 import { join, extname } from 'node:path'
-import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync } from 'node:fs'
 import { bundledPackNames } from './library.js'
 
 const DIR = process.env.SLIDESMITH_DIR || join(homedir(), '.slidesmith')
@@ -47,7 +47,14 @@ function writeJson(path, value) {
 function newId(prefix) {
   return `${prefix}-${Date.now()}-${Math.round(Math.random() * 1e6)}`
 }
-function makeProject(name, brain, defaults, imagePacks, finalSlideImageUrl) {
+function normalizeFinalSlideUrls(project = {}) {
+  const urls = Array.isArray(project.finalSlideImageUrls) ? project.finalSlideImageUrls.filter(Boolean) : []
+  if (project.finalSlideImageUrl && !urls.includes(project.finalSlideImageUrl)) urls.unshift(project.finalSlideImageUrl)
+  return urls
+}
+
+function makeProject(name, brain, defaults, imagePacks, finalSlideImageUrls) {
+  const urls = Array.isArray(finalSlideImageUrls) ? finalSlideImageUrls.filter(Boolean) : []
   return {
     id: newId('p'),
     name: name || 'Project 1',
@@ -56,7 +63,8 @@ function makeProject(name, brain, defaults, imagePacks, finalSlideImageUrl) {
     // Which background packs generation draws from. Defaults to all bundled
     // packs so a fresh project generates with images out of the box. Empty = gradients.
     imagePacks: imagePacks ?? bundledPackNames(),
-    finalSlideImageUrl,
+    finalSlideImageUrl: urls[0] || '',
+    finalSlideImageUrls: urls,
   }
 }
 
@@ -71,7 +79,8 @@ export function getConfig() {
         brain: { ...DEFAULT_BRAIN, ...p.brain },
         defaults: { ...DEFAULT_DEFAULTS, ...p.defaults },
         imagePacks: p.imagePacks ?? bundledPackNames(),
-        finalSlideImageUrl: p.finalSlideImageUrl,
+        finalSlideImageUrl: normalizeFinalSlideUrls(p)[0] || '',
+        finalSlideImageUrls: normalizeFinalSlideUrls(p),
       }))
     : null
 
@@ -146,47 +155,95 @@ export function updateProject(id, patch) {
           brain: patch.brain ? { ...p.brain, ...patch.brain } : p.brain,
           defaults: patch.defaults ? { ...p.defaults, ...patch.defaults } : p.defaults,
           imagePacks: patch.imagePacks ?? p.imagePacks,
-          finalSlideImageUrl: patch.finalSlideImageUrl !== undefined ? patch.finalSlideImageUrl : p.finalSlideImageUrl,
+          finalSlideImageUrls: patch.finalSlideImageUrls !== undefined ? patch.finalSlideImageUrls : p.finalSlideImageUrls,
+          finalSlideImageUrl: patch.finalSlideImageUrls !== undefined
+            ? (patch.finalSlideImageUrls[0] || '')
+            : (patch.finalSlideImageUrl !== undefined ? patch.finalSlideImageUrl : p.finalSlideImageUrl),
         }
       : p
   )
   return writeConfig({ ...c, projects })
 }
 
-function finalSlidePath(projectId, ext = '.png') {
+function finalSlidePath(projectId, imageId = 'default', ext = '.png') {
+  return join(FINAL_SLIDES_DIR, `${projectId}-${imageId}${ext}`)
+}
+
+function legacyFinalSlidePath(projectId, ext = '.png') {
   return join(FINAL_SLIDES_DIR, `${projectId}${ext}`)
 }
 
 function removeExistingFinalSlide(projectId) {
+  ensureFinalSlidesDir()
+  for (const name of readdirSync(FINAL_SLIDES_DIR)) {
+    if (name.startsWith(`${projectId}-`)) rmSync(join(FINAL_SLIDES_DIR, name), { force: true })
+  }
   for (const ext of ['.png', '.jpg', '.jpeg', '.webp']) {
-    const path = finalSlidePath(projectId, ext)
-    if (existsSync(path)) rmSync(path)
+    const path = legacyFinalSlidePath(projectId, ext)
+    if (existsSync(path)) rmSync(path, { force: true })
   }
 }
 
-export function saveFinalSlide(projectId, dataUrl) {
+function decodeFinalSlide(dataUrl) {
   const match = String(dataUrl || '').match(/^data:image\/(png|jpe?g|webp);base64,(.+)$/)
   if (!match) throw new Error('Upload a PNG, JPG, or WEBP image.')
   const ext = match[1] === 'jpeg' ? '.jpg' : `.${match[1]}`
   const buffer = Buffer.from(match[2], 'base64')
   if (!buffer.length) throw new Error('Uploaded image is empty.')
   if (buffer.length > 15 * 1024 * 1024) throw new Error('Final slide image must be under 15 MB.')
+  return { ext, buffer }
+}
+
+export function saveFinalSlide(projectId, dataUrlOrUrls) {
+  const dataUrls = Array.isArray(dataUrlOrUrls) ? dataUrlOrUrls : [dataUrlOrUrls]
+  if (!dataUrls.length) throw new Error('Upload at least one final slide image.')
 
   ensureFinalSlidesDir()
-  removeExistingFinalSlide(projectId)
-  writeFileSync(finalSlidePath(projectId, ext), buffer)
+  const project = getConfig().projects.find((p) => p.id === projectId)
+  const existing = project?.finalSlideImageUrls || normalizeFinalSlideUrls(project)
   const version = Date.now()
-  return updateProject(projectId, { finalSlideImageUrl: `/api/final-slide/${encodeURIComponent(projectId)}?v=${version}` })
+  const added = dataUrls.map((dataUrl) => {
+    const { ext, buffer } = decodeFinalSlide(dataUrl)
+    const imageId = newId('final')
+    writeFileSync(finalSlidePath(projectId, imageId, ext), buffer)
+    return `/api/final-slide/${encodeURIComponent(projectId)}/${encodeURIComponent(imageId)}?v=${version}`
+  })
+  return updateProject(projectId, { finalSlideImageUrls: [...existing, ...added] })
 }
 
-export function clearFinalSlide(projectId) {
-  removeExistingFinalSlide(projectId)
-  return updateProject(projectId, { finalSlideImageUrl: '' })
-}
-
-export function getFinalSlideFile(projectId) {
+function fileFromFinalSlideUrl(projectId, imageUrl) {
+  const match = String(imageUrl || '').match(new RegExp(`/api/final-slide/${projectId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/([^?/#]+)`))
+  if (!match) return null
+  const imageId = decodeURIComponent(match[1])
   for (const ext of ['.png', '.jpg', '.jpeg', '.webp']) {
-    const path = finalSlidePath(projectId, ext)
+    const path = finalSlidePath(projectId, imageId, ext)
+    if (existsSync(path)) return path
+  }
+  return null
+}
+
+export function clearFinalSlide(projectId, imageUrl = '') {
+  if (!imageUrl) {
+    removeExistingFinalSlide(projectId)
+    return updateProject(projectId, { finalSlideImageUrls: [] })
+  }
+  const path = fileFromFinalSlideUrl(projectId, imageUrl)
+  if (path) rmSync(path, { force: true })
+  const project = getConfig().projects.find((p) => p.id === projectId)
+  const urls = normalizeFinalSlideUrls(project).filter((url) => url !== imageUrl)
+  return updateProject(projectId, { finalSlideImageUrls: urls })
+}
+
+export function getFinalSlideFile(projectId, imageId = '') {
+  if (imageId) {
+    for (const ext of ['.png', '.jpg', '.jpeg', '.webp']) {
+      const path = finalSlidePath(projectId, imageId, ext)
+      if (existsSync(path)) return { path, ext: extname(path).toLowerCase() }
+    }
+    return null
+  }
+  for (const ext of ['.png', '.jpg', '.jpeg', '.webp']) {
+    const path = legacyFinalSlidePath(projectId, ext)
     if (existsSync(path)) return { path, ext: extname(path).toLowerCase() }
   }
   return null

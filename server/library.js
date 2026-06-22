@@ -31,6 +31,7 @@ function bundled() {
       url: `/library/${path}`,
       pack: pack.name,
       source: 'bundled',
+      purpose: 'background',
     }))
   )
 }
@@ -55,7 +56,7 @@ function reconcileOrphans() {
   let changed = false
   for (const file of readdirSync(MEDIA_DIR)) {
     if (!/\.(jpe?g|png|webp)$/i.test(file) || known.has(file)) continue
-    index.push({ id: `scraped:${file.replace(/\.[^.]+$/, '')}`, file, pack: 'Scraped', addedAt: new Date().toISOString() })
+    index.push({ id: `scraped:${file.replace(/\.[^.]+$/, '')}`, file, pack: 'Scraped', purpose: 'background', addedAt: new Date().toISOString() })
     changed = true
   }
   if (changed) writeJson(INDEX_PATH, index)
@@ -72,17 +73,65 @@ export function listLibrary() {
       id: s.id,
       url: `/api/library/img/${encodeURIComponent(s.id)}`,
       pack: s.pack || 'Scraped',
-      source: 'scraped',
+      source: s.source || 'scraped',
+      purpose: s.purpose === 'screenshot' ? 'screenshot' : 'background',
     }))
   // Scraped first (newest), then the bundled packs.
   return [...scraped, ...bundled()]
+}
+
+function extForMime(mime) {
+  if (mime === 'image/png') return '.png'
+  if (mime === 'image/webp') return '.webp'
+  if (mime === 'image/jpeg' || mime === 'image/jpg') return '.jpg'
+  return null
+}
+
+export function uploadLibraryImages({ images, purpose = 'background', pack }) {
+  const list = Array.isArray(images) ? images : []
+  if (!list.length) throw new Error('Choose at least one image to upload.')
+  if (list.length > 40) throw new Error('Upload at most 40 images at a time.')
+
+  ensure()
+  const index = scrapedIndex()
+  const normalizedPurpose = purpose === 'screenshot' ? 'screenshot' : 'background'
+  const packName = String(pack || '').trim() || (normalizedPurpose === 'screenshot' ? 'Showcase screenshots' : 'Uploads')
+  const added = []
+
+  for (const item of list) {
+    const dataUrl = typeof item === 'string' ? item : item?.dataUrl
+    const match = String(dataUrl || '').match(/^data:(image\/(?:png|jpe?g|webp));base64,(.+)$/i)
+    if (!match) throw new Error('Upload PNG, JPG, or WEBP images only.')
+    const ext = extForMime(match[1].toLowerCase())
+    if (!ext) throw new Error('Upload PNG, JPG, or WEBP images only.')
+    const buffer = Buffer.from(match[2], 'base64')
+    if (!buffer.length) throw new Error('Uploaded image is empty.')
+    if (buffer.length > 15 * 1024 * 1024) throw new Error('Each uploaded image must be under 15 MB.')
+
+    const source = 'uploaded'
+    const id = `${source}:${Date.now()}-${Math.round(Math.random() * 1e6)}`
+    const file = `${id.replace(`${source}:`, '')}${ext}`
+    writeFileSync(join(MEDIA_DIR, file), buffer)
+    const rec = { id, file, pack: packName, source, purpose: normalizedPurpose, addedAt: new Date().toISOString() }
+    index.unshift(rec)
+    added.push({
+      id,
+      url: `/api/library/img/${encodeURIComponent(id)}`,
+      pack: packName,
+      source,
+      purpose: normalizedPurpose,
+    })
+  }
+
+  writeJson(INDEX_PATH, index)
+  return { added: added.length, images: added, library: listLibrary() }
 }
 
 // Group the library into packs with a few cover thumbnails each (for the
 // pack-picker UIs in Generate + Settings).
 export function listPacks() {
   const map = new Map()
-  for (const img of listLibrary()) {
+  for (const img of listLibrary().filter((item) => item.purpose !== 'screenshot')) {
     if (!map.has(img.pack)) map.set(img.pack, { name: img.pack, source: img.source, count: 0, covers: [] })
     const p = map.get(img.pack)
     p.count++
@@ -208,7 +257,7 @@ export async function scrapePinterest({ apiKey, actor, searches, count }) {
       const id = `scraped:${Date.now()}-${Math.round(Math.random() * 1e6)}`
       const file = `${id.replace('scraped:', '')}${ext}`
       writeFileSync(join(MEDIA_DIR, file), buf)
-      index.unshift({ id, file, pack, addedAt: new Date().toISOString() })
+      index.unshift({ id, file, pack, source: 'scraped', purpose: 'background', addedAt: new Date().toISOString() })
       added++
       if (added % 5 === 0 || added === urls.length) log.progress(added, urls.length, 'downloaded')
     } catch {

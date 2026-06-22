@@ -230,6 +230,7 @@ export default function App() {
         activeProjectId={config.activeProjectId}
         onSwitchProject={switchProject}
         onNewProject={newProject}
+        onDeleteProject={removeProject}
       />
       <main className="flex-1 h-full overflow-hidden flex flex-col">
         {error && activeView !== 'settings' && (

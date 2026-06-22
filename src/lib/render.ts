@@ -8,10 +8,10 @@
 // scheduled PNG matches what the user saw when editing.
 import type { Slide, Slideshow } from '../types';
 import { FONT_SIZE_PCT, STROKE_RATIO, LINE_HEIGHT, SIDE_PAD_PCT, pct } from './captionStyle';
+import { SHOWCASE_MOCKUP } from './showcaseMockup';
 
 const W = 1080;
 const H = 1920;
-
 // Word-wrap within hard newlines, mirroring the preview's wrapping.
 function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
   const out: string[] = [];
@@ -55,6 +55,13 @@ function drawContain(ctx: CanvasRenderingContext2D, img: HTMLImageElement) {
   const w = img.width * scale;
   const h = img.height * scale;
   ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
+}
+
+function drawCoverRect(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
+  const scale = Math.max(w / img.width, h / img.height);
+  const iw = img.width * scale;
+  const ih = img.height * scale;
+  ctx.drawImage(img, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih);
 }
 
 function drawRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -130,6 +137,145 @@ function drawNotesSlide(ctx: CanvasRenderingContext2D, text: string) {
   ctx.stroke();
 }
 
+function drawFallbackPhoneScreen(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  const grad = ctx.createLinearGradient(x, y, x + w, y + h);
+  grad.addColorStop(0, '#20242b');
+  grad.addColorStop(1, '#07080a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(x, y, w, h);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  for (let row = 0; row < 4; row++) {
+    for (let col = 0; col < 3; col++) {
+      const size = 86;
+      const gap = 38;
+      const bx = x + 68 + col * (size + gap);
+      const by = y + 210 + row * (size + 58);
+      drawRoundedRect(ctx, bx, by, size, size, 22);
+      ctx.fill();
+    }
+  }
+
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  drawRoundedRect(ctx, x + 54, y + h - 170, w - 108, 104, 34);
+  ctx.fill();
+}
+
+function drawCenteredLines(
+  ctx: CanvasRenderingContext2D,
+  lines: string[],
+  x: number,
+  y: number,
+  lineHeight: number,
+  fillStyle = '#ffffff',
+  shadow = true,
+) {
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = fillStyle;
+  if (shadow) {
+    ctx.shadowColor = 'rgba(0,0,0,0.42)';
+    ctx.shadowBlur = 18;
+    ctx.shadowOffsetY = 4;
+  }
+  lines.forEach((line, index) => ctx.fillText(line, x, y + index * lineHeight));
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+}
+
+async function drawShowcaseSlide(ctx: CanvasRenderingContext2D, slide: Slide) {
+  let image: HTMLImageElement | null = null;
+  let phoneFrame: HTMLImageElement | null = null;
+  if (slide.imageUrl) {
+    try {
+      image = await loadImage(slide.imageUrl);
+    } catch {
+      image = null;
+    }
+  }
+  try {
+    phoneFrame = await loadImage(SHOWCASE_MOCKUP.frameSrc);
+  } catch {
+    phoneFrame = null;
+  }
+
+  if (image) {
+    ctx.save();
+    ctx.filter = 'blur(34px)';
+    drawCover(ctx, image);
+    ctx.restore();
+  } else {
+    const grad = ctx.createLinearGradient(0, 0, W, H);
+    grad.addColorStop(0, slide.bgFrom || '#c8d2d4');
+    grad.addColorStop(0.52, '#0d0f12');
+    grad.addColorStop(1, slide.bgTo || '#b8ada0');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  ctx.fillStyle = 'rgba(0,0,0,0.43)';
+  ctx.fillRect(0, 0, W, H);
+  const vig = ctx.createRadialGradient(W / 2, H / 2, H / 4, W / 2, H / 2, H);
+  vig.addColorStop(0, 'rgba(0,0,0,0)');
+  vig.addColorStop(1, 'rgba(0,0,0,0.42)');
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, W, H);
+
+  const [rawTitle, ...rawBody] = (slide.text || '').split('\n');
+  const title = rawTitle?.trim() || 'Control Center';
+  const subtitle = rawBody.join(' ').trim();
+
+  ctx.font = '800 72px Inter, sans-serif';
+  const titleLines = wrap(ctx, title, 840).slice(0, 2);
+  drawCenteredLines(ctx, titleLines, W / 2, 210, 82);
+
+  const phoneW = 620;
+  const phoneH = phoneW * (SHOWCASE_MOCKUP.frame.height / SHOWCASE_MOCKUP.frame.width);
+  const phoneX = (W - phoneW) / 2;
+  const phoneY = 292;
+  const scale = phoneW / SHOWCASE_MOCKUP.frame.width;
+  const screenX = phoneX + SHOWCASE_MOCKUP.screen.x * scale;
+  const screenY = phoneY + SHOWCASE_MOCKUP.screen.y * scale;
+  const screenW = SHOWCASE_MOCKUP.screen.width * scale;
+  const screenH = SHOWCASE_MOCKUP.screen.height * scale;
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.48)';
+  ctx.shadowBlur = 48;
+  ctx.shadowOffsetY = 30;
+  if (phoneFrame) {
+    ctx.drawImage(phoneFrame, phoneX, phoneY, phoneW, phoneH);
+  } else {
+    drawRoundedRect(ctx, phoneX, phoneY, phoneW, phoneH, 62);
+    ctx.fillStyle = '#050607';
+    ctx.fill();
+  }
+  ctx.restore();
+
+  ctx.save();
+  drawRoundedRect(ctx, screenX, screenY, screenW, screenH, SHOWCASE_MOCKUP.screen.radius * scale);
+  ctx.clip();
+  if (image) {
+    drawCoverRect(ctx, image, screenX, screenY, screenW, screenH);
+    ctx.fillStyle = 'rgba(0,0,0,0.06)';
+    ctx.fillRect(screenX, screenY, screenW, screenH);
+  } else {
+    drawFallbackPhoneScreen(ctx, screenX, screenY, screenW, screenH);
+  }
+  ctx.restore();
+
+  if (phoneFrame) {
+    ctx.drawImage(phoneFrame, phoneX, phoneY, phoneW, phoneH);
+  }
+
+  if (subtitle) {
+    ctx.font = '700 44px Inter, sans-serif';
+    const subtitleLines = wrap(ctx, subtitle, 830).slice(0, 3);
+    drawCenteredLines(ctx, subtitleLines, W / 2, 1626, 58, '#ffffff', true);
+  }
+}
+
 export async function renderSlide(slide: Slide): Promise<string> {
   // Make sure the web font is ready, otherwise the first render uses a fallback.
   if (document.fonts?.ready) await document.fonts.ready;
@@ -141,6 +287,11 @@ export async function renderSlide(slide: Slide): Promise<string> {
 
   if (slide.layout === 'notes') {
     drawNotesSlide(ctx, slide.text || '');
+    return canvas.toDataURL('image/png');
+  }
+
+  if (slide.layout === 'showcase') {
+    await drawShowcaseSlide(ctx, slide);
     return canvas.toDataURL('image/png');
   }
 

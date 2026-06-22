@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
-import { X, Loader2, ChevronLeft, ChevronRight, Trash2, Shuffle, Image as ImageIcon } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { X, Loader2, ChevronLeft, ChevronRight, Trash2, Shuffle, Image as ImageIcon, Upload } from 'lucide-react';
 import type { Slideshow, Slide, LibraryImage } from '../types';
 import { Button } from './Button';
 import { SlidePreview } from './SlidePreview';
-import { getLibrary } from '../lib/api';
+import { getLibrary, uploadLibraryImages } from '../lib/api';
 import { SlideLightbox } from './Lightbox';
 import { useT } from '../i18n';
 
@@ -25,7 +25,9 @@ export function SlideshowEditorModal({ slideshow, onClose, onSave }: SlideshowEd
   const [library, setLibrary] = useState<LibraryImage[] | null>(null);
   const [pack, setPack] = useState('all');
   const [saving, setSaving] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     getLibrary().then(setLibrary).catch(() => setLibrary([]));
@@ -42,9 +44,42 @@ export function SlideshowEditorModal({ slideshow, onClose, onSave }: SlideshowEd
 
   const total = slides.length;
   const current = slides[index];
+  const isShowcase = current.layout === 'showcase';
 
   const patchSlide = (patch: Partial<Slide>) =>
     setSlides((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)));
+
+  const uploadSlideImage = (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return;
+    setUploadingImage(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = typeof reader.result === 'string' ? reader.result : '';
+      if (!dataUrl) {
+        setUploadingImage(false);
+        return;
+      }
+      try {
+        const purpose = isShowcase ? 'screenshot' : 'background';
+        const uploaded = await uploadLibraryImages(
+          [dataUrl],
+          purpose,
+          purpose === 'screenshot' ? 'Showcase screenshots' : 'Uploads'
+        );
+        const image = uploaded.images[0];
+        if (image) {
+          setLibrary(uploaded.library);
+          setPack(image.pack);
+          patchSlide({ imageUrl: image.url, imageFit: isShowcase ? undefined : current.imageFit });
+        }
+      } finally {
+        setUploadingImage(false);
+      }
+    };
+    reader.onerror = () => setUploadingImage(false);
+    reader.readAsDataURL(file);
+  };
 
   const shuffleBackgrounds = () => {
     const pool = filtered;
@@ -177,7 +212,9 @@ export function SlideshowEditorModal({ slideshow, onClose, onSave }: SlideshowEd
 
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-[11px] text-ink-6 uppercase tracking-widest font-semibold">{t('Background', '背景')}</label>
+                    <label className="text-[11px] text-ink-6 uppercase tracking-widest font-semibold">
+                      {isShowcase ? t('Phone screenshot', '手机截图') : t('Background', '背景')}
+                    </label>
                     <div className="flex items-center gap-2">
                       <select
                         value={pack}
@@ -190,14 +227,38 @@ export function SlideshowEditorModal({ slideshow, onClose, onSave }: SlideshowEd
                       </select>
                     </div>
                   </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      uploadSlideImage(e.target.files?.[0]);
+                      e.target.value = '';
+                    }}
+                  />
                   <div className="flex items-center gap-2 mb-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={uploadingImage ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingImage}
+                    >
+                      {uploadingImage ? t('Uploading…', '上传中…') : isShowcase ? t('Upload screenshot', '上传截图') : t('Upload image', '上传图片')}
+                    </Button>
                     <Button variant="ghost" size="sm" icon={<ImageIcon size={12} />} onClick={() => patchSlide({ imageUrl: undefined })}>
-                      {t('Gradient', '渐变')}
+                      {isShowcase ? t('Empty phone', '清空截图') : t('Gradient', '渐变')}
                     </Button>
                     <Button variant="ghost" size="sm" icon={<Shuffle size={12} />} onClick={shuffleBackgrounds}>
-                      {t('Shuffle all', '全部随机')}
+                      {isShowcase ? t('Shuffle screenshots', '随机截图') : t('Shuffle all', '全部随机')}
                     </Button>
                   </div>
+                  {isShowcase && (
+                    <p className="text-[11px] text-ink-6 mb-2">
+                      {t('This image appears inside the phone frame and also becomes the blurred background.', '这张图会显示在手机框里，同时作为模糊背景。')}
+                    </p>
+                  )}
                   {library === null ? (
                     <div className="flex items-center justify-center py-6 text-ink-5 text-[12px] gap-2">
                       <Loader2 size={13} className="animate-spin" /> {t('Loading…', '加载中…')}

@@ -139,18 +139,25 @@ export function SettingsView({
   const toggleAccount = (id: number) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
-  const uploadFinal = async (file: File | null) => {
-    if (!file) return;
+  const finalSlideUrls = project.finalSlideImageUrls?.length
+    ? project.finalSlideImageUrls
+    : (project.finalSlideImageUrl ? [project.finalSlideImageUrl] : []);
+
+  const uploadFinal = async (files: FileList | null) => {
+    const selectedFiles = Array.from(files || []);
+    if (!selectedFiles.length) return;
     setFinalSlideBusy(true);
     setSaveError(null);
     try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(reader.error || new Error('Could not read image.'));
-        reader.readAsDataURL(file);
-      });
-      onConfigChange(await uploadFinalSlide(project.id, dataUrl));
+      const dataUrls = await Promise.all(selectedFiles.map((file) =>
+        new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(reader.error || new Error('Could not read image.'));
+          reader.readAsDataURL(file);
+        })
+      ));
+      onConfigChange(await uploadFinalSlide(project.id, dataUrls));
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -158,11 +165,11 @@ export function SettingsView({
     }
   };
 
-  const clearFinal = async () => {
+  const clearFinal = async (imageUrl?: string) => {
     setFinalSlideBusy(true);
     setSaveError(null);
     try {
-      onConfigChange(await clearFinalSlide(project.id));
+      onConfigChange(await clearFinalSlide(project.id, imageUrl));
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -178,9 +185,7 @@ export function SettingsView({
       )
     : models;
   const isDeepSeek = aiBaseUrl.includes('deepseek');
-  const postizTikTokIntegrations = postizIntegrations.filter((integration) =>
-    integration.providerIdentifier.toLowerCase() === 'tiktok'
-  );
+  const availablePostizIntegrations = postizIntegrations.filter((integration) => !integration.disabled);
 
   return (
     <>
@@ -206,7 +211,19 @@ export function SettingsView({
               <input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} />
             </Field>
             {canDelete && (
-              <Button variant="danger-ghost" icon={<Trash2 size={13} />} onClick={onDeleteProject}>
+              <Button
+                variant="danger-ghost"
+                icon={<Trash2 size={13} />}
+                onClick={() => {
+                  const ok = window.confirm(
+                    t(
+                      `Delete "${project.name}"? This will also remove its queue drafts and default final slide.`,
+                      `删除“${project.name}”？这个项目的队列草稿和默认最后一页也会一起删除。`
+                    )
+                  );
+                  if (ok) onDeleteProject();
+                }}
+              >
                 {t('Delete this project', '删除这个项目')}
               </Button>
             )}
@@ -258,7 +275,7 @@ export function SettingsView({
               <div className="space-y-3">
                 <Field
                   label={t('Postiz API key', 'Postiz API Key')}
-                  hint={t('Used for TikTok upload mode: Slidesmith sends rendered images to Postiz, then Postiz sends them to TikTok inbox for manual publishing.', '用于 TikTok Upload 模式：Slidesmith 把图片发给 Postiz，再由 Postiz 发到 TikTok inbox，之后你手动发布。')}
+                  hint={t('Used to send rendered slideshows to connected Postiz channels. TikTok uses upload mode; simple platforms like Threads can be scheduled directly.', '用于把渲染好的轮播发送到 Postiz 连接的平台。TikTok 走 upload；Threads 这类简单平台可直接排程。')}
                 >
                   <input
                     value={postiz}
@@ -276,14 +293,14 @@ export function SettingsView({
                     className={`${inputClass} font-mono`}
                   />
                 </Field>
-                <Field label={t('Default TikTok integration', '默认 TikTok integration')} hint={t('This is the TikTok channel Postiz will use for Upload without posting. Refresh it with Test connection after connecting TikTok in Postiz.', '这是 Postiz 用来 Upload without posting 的 TikTok channel。在 Postiz 连接 TikTok 后点测试连接刷新。')}>
+                <Field label={t('Default Postiz integration', '默认 Postiz integration')} hint={t('This is the default channel Slidesmith will use when scheduling through Postiz. Refresh it with Test connection after connecting a new channel in Postiz.', '这是 Slidesmith 通过 Postiz 排程时默认使用的平台。在 Postiz 新连接平台后点测试连接刷新。')}>
                   {postizIntegrations.length === 0 ? (
                     <p className="text-[12px] text-ink-5">
-                      {t('No Postiz integrations loaded yet. Add your Postiz API key, save/test, then connect TikTok in Postiz.', '还没有加载到 Postiz integrations。先填 Postiz API Key 并保存/测试，然后去 Postiz 连接 TikTok。')}
+                      {t('No Postiz integrations loaded yet. Add your Postiz API key, save/test, then connect a channel in Postiz.', '还没有加载到 Postiz integrations。先填 Postiz API Key 并保存/测试，然后去 Postiz 连接平台。')}
                     </p>
-                  ) : postizTikTokIntegrations.length === 0 ? (
+                  ) : availablePostizIntegrations.length === 0 ? (
                     <p className="text-[12px] text-ink-5">
-                      {t('Postiz is connected, but no TikTok integration was found. Connect TikTok inside Postiz first.', 'Postiz 已连接，但没有找到 TikTok integration。请先在 Postiz 里连接 TikTok。')}
+                      {t('Postiz is connected, but every integration is disabled. Enable a channel inside Postiz first.', 'Postiz 已连接，但所有 integration 都不可用。请先在 Postiz 里启用平台。')}
                     </p>
                   ) : (
                     <select
@@ -291,21 +308,19 @@ export function SettingsView({
                       onChange={(e) => setPostizIntegrationId(e.target.value)}
                       className={inputClass}
                     >
-                      <option value="">{t('Select a TikTok integration', '选择 TikTok integration')}</option>
-                      {postizTikTokIntegrations
-                        .filter((integration) => !integration.disabled)
-                        .map((integration) => (
-                          <option key={integration.id} value={integration.id}>
-                            {integration.providerIdentifier || 'unknown'} · {integration.name || integration.profile || integration.id}
-                          </option>
-                        ))}
+                      <option value="">{t('Select a Postiz integration', '选择 Postiz integration')}</option>
+                      {availablePostizIntegrations.map((integration) => (
+                        <option key={integration.id} value={integration.id}>
+                          {integration.providerIdentifier || 'unknown'} · {integration.name || integration.profile || integration.id}
+                        </option>
+                      ))}
                     </select>
                   )}
                 </Field>
                 <div className="flex items-start gap-2 p-3 rounded-lg bg-surface border border-line">
                   <Info size={13} className="text-ink-5 mt-0.5 shrink-0" />
                   <p className="text-[12px] text-ink-4 leading-snug">
-                    {t('Postiz Upload sends the carousel to TikTok inbox. You still finish editing and publish manually on your phone.', 'Postiz Upload 会把轮播发送到 TikTok inbox。你仍然需要在手机上完成编辑并手动发布。')}
+                    {t('Postiz scheduling is provider-aware. TikTok keeps upload/manual inbox behavior; Threads and other simple channels use Postiz scheduled publishing.', 'Postiz 排程会按平台处理。TikTok 保持 upload/manual inbox；Threads 等简单平台由 Postiz 定时发布。')}
                   </p>
                 </div>
               </div>
@@ -465,49 +480,69 @@ export function SettingsView({
           </Section>
 
           <Section
-            title={t('Default final slide', '默认最后一页')}
-            description={t('Appended to every newly generated slideshow. Use this for an App Store screenshot, QR code, or product CTA.', '会自动追加到新生成内容的最后。适合放 App Store 截图、二维码或产品 CTA。')}
+            title={t('Default final slides', '默认最后几页')}
+            description={t('Appended to every newly generated slideshow in this order. Use these for App Store screenshots, QR codes, or product CTA pages.', '会按顺序自动追加到新生成内容的最后。适合放 App Store 截图、二维码或产品 CTA 页面。')}
           >
-            <div className="flex items-start gap-4">
-              <div className="w-24 shrink-0">
-                {project.finalSlideImageUrl ? (
-                  <SlidePreview
-                    slide={{
-                      id: 'final-slide-preview',
-                      text: '',
-                      imageUrl: project.finalSlideImageUrl,
-                      imageFit: 'contain',
-                      darkOverlay: false,
-                      bgFrom: '#ffffff',
-                      bgTo: '#ffffff',
-                    }}
-                    className="border border-line"
-                  />
-                ) : (
-                  <div className="aspect-[9/16] rounded-md border border-dashed border-line-2 bg-raised flex items-center justify-center text-ink-6">
-                    <ImageIcon size={20} />
-                  </div>
-                )}
-              </div>
-              <div className="flex-1 min-w-0 space-y-2">
+            <div className="space-y-3">
+              {finalSlideUrls.length ? (
+                <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-2">
+                  {finalSlideUrls.map((imageUrl, index) => (
+                    <div key={`${imageUrl}-${index}`} className="relative group">
+                      <SlidePreview
+                        slide={{
+                          id: `final-slide-preview-${index}`,
+                          text: '',
+                          imageUrl,
+                          imageFit: 'contain',
+                          darkOverlay: false,
+                          bgFrom: '#ffffff',
+                          bgTo: '#ffffff',
+                        }}
+                        className="border border-line"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void clearFinal(imageUrl)}
+                        disabled={finalSlideBusy}
+                        className="absolute right-1 top-1 h-6 w-6 rounded-full bg-black/65 text-white grid place-items-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-40"
+                        title={t('Remove this final slide', '删除这张默认最后页')}
+                      >
+                        <X size={13} />
+                      </button>
+                      <span className="absolute left-1 top-1 rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                        {index + 1}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="aspect-[9/16] w-24 rounded-md border border-dashed border-line-2 bg-raised flex items-center justify-center text-ink-6">
+                  <ImageIcon size={20} />
+                </div>
+              )}
+              <div className="space-y-2">
                 <p className="text-[12px] text-ink-5 leading-relaxed">
-                  {t('New generations will end with this exact image. It is rendered without overlay text and preserved with contain fit.', '新生成内容会以这张图结尾。不叠加文字，使用完整显示模式。')}
+                  {t('New generations will append these exact images at the end. They are rendered without overlay text and preserved with contain fit.', '新生成内容会把这些图片追加到最后。不叠加文字，使用完整显示模式。')}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <label className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-line text-[12px] text-ink-4 hover:text-ink hover:border-line-2 cursor-pointer">
                     {finalSlideBusy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-                    {t('Upload image', '上传图片')}
+                    {t('Upload images', '上传图片')}
                     <input
                       type="file"
                       accept="image/png,image/jpeg,image/webp"
+                      multiple
                       className="hidden"
                       disabled={finalSlideBusy}
-                      onChange={(e) => void uploadFinal(e.target.files?.[0] || null)}
+                      onChange={(e) => {
+                        void uploadFinal(e.target.files);
+                        e.currentTarget.value = '';
+                      }}
                     />
                   </label>
-                  {project.finalSlideImageUrl && (
-                    <Button variant="secondary" icon={<Trash2 size={13} />} onClick={clearFinal} disabled={finalSlideBusy}>
-                      {t('Clear', '清除')}
+                  {finalSlideUrls.length > 0 && (
+                    <Button variant="secondary" icon={<Trash2 size={13} />} onClick={() => void clearFinal()} disabled={finalSlideBusy}>
+                      {t('Clear all', '全部清除')}
                     </Button>
                   )}
                 </div>

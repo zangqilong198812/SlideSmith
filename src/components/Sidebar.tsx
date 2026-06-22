@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LayoutGrid, CalendarClock, LineChart, Brain, Settings, ChevronsUpDown, Plus, Check, Images } from 'lucide-react';
+import { LayoutGrid, CalendarClock, LineChart, Brain, Settings, ChevronsUpDown, Plus, Check, Images, Trash2 } from 'lucide-react';
 import type { ViewKey, Project } from '../types';
 import { useT } from '../i18n';
 
@@ -12,6 +12,7 @@ interface SidebarProps {
   activeProjectId: string;
   onSwitchProject: (id: string) => void;
   onNewProject: () => void;
+  onDeleteProject: (id: string) => void;
 }
 
 const nav: { key: ViewKey; label: [string, string]; icon: typeof LayoutGrid; badge?: 'queue' | 'scheduled' }[] = [
@@ -35,6 +36,7 @@ export function Sidebar({
   activeProjectId,
   onSwitchProject,
   onNewProject,
+  onDeleteProject,
 }: SidebarProps) {
   const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -96,6 +98,25 @@ export function Sidebar({
                   <Plus size={13} className="shrink-0" />
                   <span className="text-[13px]">{t('New project', '新项目')}</span>
                 </button>
+                {projects.length > 1 && (
+                  <button
+                    onClick={() => {
+                      const ok = window.confirm(
+                        t(
+                          `Delete "${active.name}"? This will also remove its queue drafts and default final slide.`,
+                          `删除“${active.name}”？这个项目的队列草稿和默认最后一页也会一起删除。`
+                        )
+                      );
+                      if (!ok) return;
+                      setMenuOpen(false);
+                      onDeleteProject(active.id);
+                    }}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-red-600 hover:bg-red-50 transition-colors"
+                  >
+                    <Trash2 size={13} className="shrink-0" />
+                    <span className="text-[13px]">{t('Delete current project', '删除当前项目')}</span>
+                  </button>
+                )}
               </div>
             </div>
           </>
